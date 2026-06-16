@@ -1,3 +1,4 @@
+import { useState, useEffect } from 'react'
 import { DollarSign, Plane, Building2, Utensils, Compass, Bus, ShoppingBag, Wallet } from 'lucide-react'
 import { useWizardStore } from '../../store/wizardStore'
 import { CurrencySelector } from '../shared/CurrencySelector'
@@ -5,6 +6,37 @@ import { TRIP_STYLE_PRESETS, BUDGET_CATEGORIES } from '../../data/tripStylePrese
 import { computeTotalBudget } from '../../lib/utils'
 import { getCurrencySymbol } from '../../data/currencies'
 import type { TripStyle } from '../../types/wizard'
+
+function BudgetInput({ value, onChange, sym }: { value: number; onChange: (v: number) => void; sym: string }) {
+  const [localVal, setLocalVal] = useState(String(value))
+  const [focused, setFocused] = useState(false)
+
+  useEffect(() => {
+    if (!focused) setLocalVal(String(value))
+  }, [value, focused])
+
+  return (
+    <div className="relative">
+      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-gray-400 font-mono pointer-events-none">
+        {sym}
+      </span>
+      <input
+        type="text"
+        inputMode="decimal"
+        value={localVal}
+        onChange={(e) => setLocalVal(e.target.value)}
+        onFocus={(e) => { setFocused(true); e.target.select() }}
+        onBlur={() => {
+          setFocused(false)
+          const parsed = Math.max(0, parseFloat(localVal) || 0)
+          setLocalVal(String(parsed))
+          onChange(parsed)
+        }}
+        className="w-full pl-8 pr-3 py-2.5 rounded-xl border border-gray-200 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-indigo-400"
+      />
+    </div>
+  )
+}
 
 const CATEGORY_ICONS = {
   flights: Plane,
@@ -83,23 +115,11 @@ export function Step2Budget() {
                     {isPerTrip ? 'per trip' : 'per day'}
                   </span>
                 </label>
-                <div className="relative">
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-gray-400 font-mono pointer-events-none">
-                    {sym}
-                  </span>
-                  <input
-                    type="number"
-                    min={0}
-                    value={budgets[key]}
-                    onChange={(e) =>
-                      setField('budgets', {
-                        ...budgets,
-                        [key]: Math.max(0, parseFloat(e.target.value) || 0),
-                      })
-                    }
-                    className="w-full pl-8 pr-3 py-2.5 rounded-xl border border-gray-200 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-indigo-400"
-                  />
-                </div>
+                <BudgetInput
+                  sym={sym}
+                  value={budgets[key]}
+                  onChange={(v) => setField('budgets', { ...budgets, [key]: v })}
+                />
                 <div className="text-xs text-gray-400">{description}</div>
               </div>
             )

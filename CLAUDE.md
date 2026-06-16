@@ -4,17 +4,17 @@ A Vite + React + TypeScript web app that generates downloadable travel planning 
 
 ## Tech Stack
 
-| Layer | Technology |
-|---|---|
-| Build | Vite 6 (ESM) |
-| UI | React 18 + TypeScript 5 |
-| Styling | Tailwind CSS 3 (no component library — built from scratch) |
-| State | Zustand 5 (wizard state) |
-| Spreadsheet | ExcelJS 4 + JSZip 3 (chart injection) |
-| Browser compat | vite-plugin-node-polyfills (installed with `--legacy-peer-deps` due to Vite 6 peer conflict) |
-| Icons | lucide-react |
-| Date math | date-fns |
-| AI | @anthropic-ai/sdk — server-side via custom Vite middleware (`vite-plugin-recommendations.ts`) |
+| Layer          | Technology                                                                                    |
+| -------------- | --------------------------------------------------------------------------------------------- |
+| Build          | Vite 6 (ESM)                                                                                  |
+| UI             | React 18 + TypeScript 5                                                                       |
+| Styling        | Tailwind CSS 3 (no component library — built from scratch)                                    |
+| State          | Zustand 5 (wizard state)                                                                      |
+| Spreadsheet    | ExcelJS 4 + JSZip 3 (chart injection)                                                         |
+| Browser compat | vite-plugin-node-polyfills (installed with `--legacy-peer-deps` due to Vite 6 peer conflict)  |
+| Icons          | lucide-react                                                                                  |
+| Date math      | date-fns                                                                                      |
+| AI             | @anthropic-ai/sdk — server-side via custom Vite middleware (`vite-plugin-recommendations.ts`) |
 
 **Dev server:** `npm run dev` → http://localhost:5173
 **Build:** `npm run build` (runs `tsc -b && vite build`)
@@ -38,19 +38,19 @@ Navigation and validation live in `src/hooks/useWizardNavigation.ts`. When AI re
 
 All sheet builders are in `src/lib/excel/sheets/`. The entry point is `src/lib/excel/index.ts`. Tab order matches build-call order in `index.ts`; UI toggle order in `src/types/wizard.ts` (`ALL_SHEET_IDS`) mirrors it minus always-on sheets.
 
-| # | Sheet | Always on | Notes |
-|---|---|---|---|
-| 1 | OVERVIEW | ✓ | Named ranges: TripStart D3, TripEnd D4, NumAdults D9, TotalBudget D14; native DrawingML chart (bar/pie/donut) injected via JSZip post-processing |
-| 2 | ITINERARY | ✓ | Auto-dates from TripStart+n; AI-prefilled when recs on |
-| 3 | TRANSPORT | toggle | SheetId = `flights`; Mode dropdown: Air/Train/Bus/Car/Ferry/Taxi/Other |
-| 4 | HOTELS | toggle | Date col auto-fills from TripStart; AI recommendation guide table appended below tracker |
-| 5 | RESTAURANTS | toggle | AI recommendation guide table appended below tracker |
-| 6 | EXCURSIONS | toggle | Per-person × NumAdults; AI recommendation guide table appended below tracker |
-| 7 | BUDGET TRACKER | toggle | Date / Category dropdown / Description / Amount / Running Total / Notes |
-| 8 | PACKING LIST | toggle | Seasonal packing + COUNTIF progress formula |
-| 9 | TASKS | toggle | |
-| 10 | ANNUAL EVENTS | AI-gated | Only generated when `useRecommendations` is on AND data returned |
-| 11 | INSTRUCTIONS | ✓ | Always last; not toggleable |
+| #   | Sheet          | Always on | Notes                                                                                                                                            |
+| --- | -------------- | --------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 1   | OVERVIEW       | ✓         | Named ranges: TripStart D3, TripEnd D4, NumAdults D9, TotalBudget D14; native DrawingML chart (bar/pie/donut) injected via JSZip post-processing |
+| 2   | ITINERARY      | ✓         | Auto-dates from TripStart+n; AI-prefilled when recs on                                                                                           |
+| 3   | TRANSPORT      | toggle    | SheetId = `flights`; Mode dropdown: Air/Train/Bus/Car/Ferry/Taxi/Other                                                                           |
+| 4   | HOTELS         | toggle    | Date col auto-fills from TripStart; AI recommendation guide table appended below tracker                                                         |
+| 5   | RESTAURANTS    | toggle    | AI recommendation guide table appended below tracker                                                                                             |
+| 6   | EXCURSIONS     | toggle    | Per-person × NumAdults; AI recommendation guide table appended below tracker                                                                     |
+| 7   | BUDGET TRACKER | toggle    | Date / Category dropdown / Description / Amount / Running Total / Notes                                                                          |
+| 8   | PACKING LIST   | toggle    | Seasonal packing + COUNTIF progress formula                                                                                                      |
+| 9   | TASKS          | toggle    |                                                                                                                                                  |
+| 10  | ANNUAL EVENTS  | AI-gated  | Only generated when `useRecommendations` is on AND data returned                                                                                 |
+| 11  | INSTRUCTIONS   | ✓         | Always last; not toggleable                                                                                                                      |
 
 ## AI Recommendations
 
@@ -59,6 +59,7 @@ Backend: `vite-plugin-recommendations.ts` (root) registers a `/api/recommendatio
 Requires `ANTHROPIC_API_KEY` in `.env` (see `.env.example`).
 
 **What the API returns:** `{ regions, itinerary, events }`
+
 - `regions`: `{ region, description, hotels[], restaurants[], excursions[] }[]` — each place is a `PlaceRec { name, price?, rating?, cuisine?, duration?, description? }`
 - AI output is **informational only** — it does NOT prefill HOTELS/TRANSPORT/RESTAURANTS/EXCURSIONS tracker rows
 - ITINERARY IS still AI-prefilled
@@ -154,6 +155,7 @@ scripts/
 Long text in merged cells does NOT auto-grow in Excel desktop (Google Sheets and Numbers do auto-grow, so bugs only surface when opening in Excel). The fix is dynamic row height + wrapping + length caps — NOT column-width autofit (ExcelJS has no real autofit).
 
 Helper functions in `styleFactory.ts`:
+
 - `truncate(text, max)` — word-boundary truncation with ellipsis
 - `wrappedLineCount(text, widthChars)` — `ceil(len / floor(width * 0.95))`, honors `\n`
 - `rowHeightForLines(lines, ts, { min, maxLines })` — `lineHeight = ts.sizes.data * 1.4 + 6`
@@ -173,11 +175,5 @@ node scripts/verify-image-chart-injection.mjs
 ```
 
 ## Git Workflow
-
-**After completing a plan-mode implementation:** Always ask the user whether to create a new git branch for the changes before committing. If they say yes:
-
-1. Create a descriptive branch: `git checkout -b <feature-slug>`
-2. Stage the relevant files (prefer named files over `git add -A`)
-3. Create a commit with a clear message describing what changed and why
 
 Never force-push, never skip hooks, never amend published commits.

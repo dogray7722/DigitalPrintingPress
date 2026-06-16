@@ -55,6 +55,16 @@ export function buildBudgetTrackerSheet(
   ws.getCell('E7').value = 'Notes'
   styleColumnHeader(ws.getRow(7), ts)
 
+  // Date validation on column A — triggers the calendar picker in Google Sheets on double-click.
+  // Wide date range so any real trip date is valid; allowBlank lets rows stay empty.
+  ;(ws as any).dataValidations.add('A8:A57', {
+    type: 'date',
+    allowBlank: true,
+    operator: 'between',
+    formulae: [new Date(2000, 0, 1), new Date(2100, 11, 31)],
+    showErrorMessage: false,
+  } as ExcelJS.DataValidation)
+
   // Data validation for category column (B) — bounded to the 50 pre-formatted data
   // rows so Google Sheets doesn't render 450+ spurious dropdown carets below the table.
   ;(ws as any).dataValidations.add('B8:B57', {
