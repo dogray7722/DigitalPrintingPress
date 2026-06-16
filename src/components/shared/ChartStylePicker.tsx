@@ -1,79 +1,85 @@
 import { cn } from '../../lib/utils'
 import type { ChartStyle } from '../../types/wizard'
-import { Check } from 'lucide-react'
 
-interface Props {
-  value: ChartStyle
-  onChange: (style: ChartStyle) => void
+interface Option {
+  id: ChartStyle
+  label: string
+  description: string
+  preview: string[]
 }
 
-const OPTIONS: { id: ChartStyle; label: string; description: string; preview: string[] }[] = [
+const OPTIONS: Option[] = [
   {
     id: 'bar',
     label: 'Bar Chart',
-    description: 'Spent vs budget — dotted track shows limit, turns red when over budget',
+    description: 'Spent vs budget per category',
     preview: [
-      'Flights  ████████▒▒▒▒  $800 of $1k',
-      'Hotels   ██████▒▒▒▒▒▒  $600 of $1k',
-      'Meals    ████████████▓  OVER! +$50',
+      'Transport ████████▒▒▒▒',
+      'Hotel     ██████▒▒▒▒▒▒',
+      'Food      ████████████',
+      'Activities ████▒▒▒▒▒▒▒',
     ],
   },
   {
     id: 'pie',
     label: 'Pie Chart',
-    description: 'Real pie chart — updates live as you enter actual spending',
+    description: 'Share of spend by category',
     preview: [
-      '     ╭─────╮      Flights 38%',
-      '    │ ◕   │     Hotels  33%',
-      '     ╰─────╯      Food    18%',
+      '  ╭─────╮',
+      ' ╱╲  ·  ╱╲',
+      '│  ╲   ╱  │',
+      ' ╲  ╲ ╱  ╱',
+      '  ╰─────╯',
     ],
   },
   {
     id: 'donut',
     label: 'Donut Chart',
-    description: 'Real circular chart — updates live as you enter actual spending',
+    description: 'Share of spend by category',
     preview: [
-      '     ╭─────╮      Flights 38%',
-      '    │  ◍  │     Hotels  33%',
-      '     ╰─────╯      Food    18%',
+      '  ╭─────╮',
+      ' ╱ ╭───╮ ╲',
+      '│  │ ◍ │  │',
+      ' ╲ ╰───╯ ╱',
+      '  ╰─────╯',
     ],
   },
 ]
 
+interface Props {
+  value: ChartStyle
+  onChange: (s: ChartStyle) => void
+}
+
 export function ChartStylePicker({ value, onChange }: Props) {
   return (
-    <div className="flex flex-col gap-2">
-      {OPTIONS.map((opt) => (
-        <button
-          key={opt.id}
-          type="button"
-          onClick={() => onChange(opt.id)}
-          className={cn(
-            'flex items-start gap-4 p-4 rounded-xl border-2 text-left transition-all',
-            value === opt.id
-              ? 'border-indigo-500 bg-indigo-50'
-              : 'border-gray-200 bg-white hover:border-gray-300'
-          )}
-        >
-          <div
+    <div className="grid grid-cols-3 gap-3">
+      {OPTIONS.map((opt) => {
+        const isSelected = value === opt.id
+        return (
+          <button
+            key={opt.id}
+            type="button"
+            onClick={() => onChange(opt.id)}
             className={cn(
-              'mt-0.5 w-5 h-5 rounded-full border-2 shrink-0 flex items-center justify-center transition-colors',
-              value === opt.id ? 'border-indigo-500 bg-indigo-500' : 'border-gray-300'
+              'p-3 rounded-xl border-2 text-left transition-all hover:scale-105',
+              isSelected
+                ? 'border-indigo-500 bg-indigo-50 shadow-lg shadow-indigo-100'
+                : 'border-gray-200 bg-white hover:border-gray-300 shadow-sm'
             )}
           >
-            {value === opt.id && <Check size={11} className="text-white" strokeWidth={3} />}
-          </div>
-          <div className="flex-1 min-w-0">
-            <div className="font-medium text-sm text-gray-900">{opt.label}</div>
-            <div className="text-xs text-gray-500 mb-2">{opt.description}</div>
-            <div className="font-mono text-xs bg-gray-50 rounded-lg px-3 py-2 border border-gray-100 space-y-0.5">
+            <div className="font-mono text-[9px] leading-tight text-gray-500 mb-2 select-none">
               {opt.preview.map((line, i) => (
-                <div key={i} className="text-gray-600 whitespace-pre">{line}</div>
+                <div key={i}>{line}</div>
               ))}
             </div>
-          </div>
-        </button>
-      ))}
+            <div className={cn('text-xs font-semibold', isSelected ? 'text-indigo-700' : 'text-gray-700')}>
+              {opt.label}
+            </div>
+            <div className="text-xs text-gray-400 mt-0.5">{opt.description}</div>
+          </button>
+        )
+      })}
     </div>
   )
 }
