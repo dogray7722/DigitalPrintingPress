@@ -1,0 +1,336 @@
+import type ExcelJS from 'exceljs'
+import type { WizardState } from '../../../types/wizard'
+import type { ThemeStyles } from '../styleFactory'
+import {
+  styleTitleRow,
+  styleSectionHeader,
+  styleColumnHeader,
+  styleDataRow,
+  styleTotalRow,
+  styleLabelCell,
+  styleValueCell,
+} from '../styleFactory'
+import { computeTotalBudget } from '../../utils'
+import { THEMES } from '../../../types/theme'
+import { CURRENCIES, getCurrencySymbol } from '../../../data/currencies'
+import { addDays } from 'date-fns'
+
+const BUDGET_CATEGORIES = [
+  { key: 'Transportation', budget: 'transport', perTrip: false },
+  { key: 'Accommodation', budget: 'hotel', perTrip: false },
+  { key: 'Food', budget: 'food', perTrip: false },
+  { key: 'Activities', budget: 'activities', perTrip: false },
+  // Shopping is a per-trip total (like flights), seeded from the wizard's Shopping input.
+  { key: 'Shopping', budget: 'shopping', perTrip: true },
+  { key: 'Miscellaneous', budget: 'misc', perTrip: false },
+] as const
+
+// "Actual Spent" for a category = the relevant per-category sheet total (when that
+// sheet is enabled) PLUS any matching rows logged in OTHER EXPENSES. Each term is
+// added only when its source sheet exists, so the formula never references a missing
+// sheet (which would corrupt the workbook). Falls back to 0 when no source applies.
+function buildActualSpentFormula(category: string, state: WizardState): string {
+  const terms: string[] = []
+
+  if (category === 'Accommodation' && state.sheets.hotels) {
+    terms.push("'ACCOMMODATION'!$E$26")
+  }
+  if (category === 'Food' && state.sheets.restaurants) {
+    terms.push("'DINING'!$G$3")
+  }
+  if (category === 'Activities' && state.sheets.excursions) {
+    terms.push("'EXCURSIONS'!$H$36")
+  }
+  if (category === 'Transportation' && state.sheets.flights) {
+    // All transport (air + ground) from the TRANSPORTATION sheet feeds this single category.
+    terms.push(`SUM('TRANSPORTATION'!$H$6:$H$25)`)
+  }
+  if (state.sheets.budgetTracker) {
+    terms.push(
+      `SUMIF('OTHER EXPENSES'!$B$8:$B$500,"${category}",'OTHER EXPENSES'!$D$8:$D$500)`
+    )
+  }
+
+  if (terms.length === 0) return '0'
+  return `IFERROR(${terms.join('+')},0)`
+}
+
+export function buildOverviewSheet(
+  wb: ExcelJS.Workbook,
+  state: WizardState,
+  ts: ThemeStyles
+): void {
+  const ws = wb.addWorksheet('OVERVIEW')
+  ws.properties.tabColor = { argb: THEMES[state.theme].tabColor }
+
+  const dest = state.destination || 'My Trip'
+  const startDate = state.startDate ? new Date(state.startDate) : new Date()
+  const endDate = addDays(startDate, state.duration - 1)
+  const totalBudget = computeTotalBudget(state.budgets, state.duration)
+  const currSym = getCurrencySymbol(state.currency)
+
+  // ── Row 1: Title ────────────────────────────────────────────────────────────
+  const titleRow = ws.getRow(1)
+  const titleCell = ws.getCell('A1')
+  titleCell.value = `✈  ${dest.toUpperCase()}  —  TRAVEL PLANNER`
+  ws.mergeCells('A1:N1')
+  styleTitleRow(titleRow, ts)
+
+  // ── Row 2: spacer ───────────────────────────────────────────────────────────
+  ws.getRow(2).height = 6
+
+  // ── Key-value info block (rows 3–14, values in col D for named ranges) ──────
+  // All rows 3–14 get an explicit height of 20pt (240pt total ≈ 320px @ 96dpi) — both
+  // for visual consistency of the key-value block and so the F3:K14 cover-photo anchor,
+  // which spans these same rows, renders at a predictable pixel height.
+  for (let r = 3; r <= 14; r++) ws.getRow(r).height = 20
+
+  const kvLabels: [number, string][] = [
+    [3, 'TRIP START DATE'],
+    [4, 'TRIP END DATE'],
+    [5, 'DURATION'],
+    [6, 'DAYS UNTIL TRIP'],
+    [7, ''],
+    [8, 'PARTY TYPE'],
+    [9, 'TRAVELERS'],
+    [10, ''],
+    [11, 'CURRENCY'],
+    [12, ''],
+    [13, ''],
+    [14, 'TOTAL BUDGET'],
+  ]
+
+  kvLabels.forEach(([rowNum, label]) => {
+    if (!label) return
+    const labelCell = ws.getCell(`A${rowNum}`)
+    labelCell.value = label
+    ws.mergeCells(`A${rowNum}:C${rowNum}`)
+    styleLabelCell(labelCell, ts)
+  })
+
+  // D3 = TripStart (named range anchor)
+  const d3 = ws.getCell('D3')
+  d3.value = startDate
+  d3.numFmt = ts.numFmtDate
+  styleValueCell(d3, ts)
+
+  // D4 = TripEnd (named range anchor)
+  const d4 = ws.getCell('D4')
+  d4.value = endDate
+  d4.numFmt = ts.numFmtDate
+  styleValueCell(d4, ts)
+
+  const d5 = ws.getCell('D5')
+  d5.value = {
+    formula: 'IFERROR(INT(D4-D3+1)&" days","")',
+    result: `${state.duration} days`,
+  }
+  styleValueCell(d5, ts)
+
+  // Countdown — precompute a cached result so the cell renders immediately on open.
+  // (Excel/Sheets won't trigger an initial recalc on this freshly written file, so a
+  // formula with no cached result shows blank until the user edits something.)
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  const startDay = new Date(startDate.getTime())
+  startDay.setHours(0, 0, 0, 0)
+  const daysUntil = Math.round((startDay.getTime() - today.getTime()) / 86400000)
+  const daysResult =
+    daysUntil === 0
+      ? 'Today!'
+      : daysUntil > 0
+        ? `${daysUntil} days to go`
+        : `${Math.abs(daysUntil)} days ago`
+  const d6 = ws.getCell('D6')
+  d6.value = {
+    formula:
+      'IFERROR(IF(TripStart=TODAY(),"Today!",IF(TripStart>TODAY(),INT(TripStart-TODAY())&" days to go",INT(TODAY()-TripStart)&" days ago")),"—")',
+    result: daysResult,
+  }
+  styleValueCell(d6, ts)
+
+  const d8 = ws.getCell('D8')
+  d8.value = state.partyType.charAt(0).toUpperCase() + state.partyType.slice(1)
+  styleValueCell(d8, ts)
+
+  // D9 = NumAdults (named range anchor)
+  const d9 = ws.getCell('D9')
+  d9.value = state.partySize
+  styleValueCell(d9, ts)
+
+  // Currency — informational label (chosen in the wizard), now a dropdown so the
+  // user can pick a different reference currency. Options are written to a hidden
+  // helper column (R) because the full "CODE (symbol)" list exceeds Excel's
+  // 255-char inline list-formula limit. Purely a label — does not affect any
+  // numFmt elsewhere (those are static, baked in at generation time).
+  const d11 = ws.getCell('D11')
+  d11.value = `${state.currency} (${currSym})`
+  styleValueCell(d11, ts)
+
+  CURRENCIES.forEach((c, i) => {
+    ws.getCell(`R${i + 1}`).value = `${c.code} (${c.symbol})`
+  })
+  ;(ws as any).dataValidations.add('D11', {
+    type: 'list',
+    allowBlank: true,
+    formulae: [`$R$1:$R${CURRENCIES.length}`],
+    showErrorMessage: false,
+  } as ExcelJS.DataValidation)
+
+  // D14 = TotalBudget (named range anchor) — live sum of the Estimated Budget column,
+  // so it reflects any edits the user types into those cells. Cached result keeps the
+  // cell populated before the first recalc.
+  const d14 = ws.getCell('D14')
+  d14.value = { formula: 'SUM(G18:G23)', result: totalBudget }
+  d14.numFmt = ts.numFmtCurrency
+  d14.font = { name: ts.fontName, size: ts.sizes.header, bold: true }
+  d14.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: ts.palette.mediumBg } } as ExcelJS.Fill
+
+  // ── Row 15: spacer ──────────────────────────────────────────────────────────
+  ws.getRow(15).height = 8
+
+  // ── Budget Summary Table (rows 16–24) ───────────────────────────────────────
+  const summaryHeader = ws.getRow(16)
+  ws.getCell('F16').value = 'BUDGET SUMMARY'
+  ws.mergeCells('F16:K16')
+  styleSectionHeader(summaryHeader, ts)
+
+  const colHeaderRow = ws.getRow(17)
+  ws.getCell('F17').value = 'Category'
+  ws.getCell('G17').value = 'Estimated Budget'
+  ws.getCell('H17').value = 'Actual Spent'
+  ws.getCell('I17').value = 'Remaining'
+  ws.getCell('J17').value = '% Used'
+  ws.getCell('K17').value = 'Status'
+  styleColumnHeader(colHeaderRow, ts)
+
+  let rowIdx = 18
+  BUDGET_CATEGORIES.forEach(({ key, budget, perTrip }, i) => {
+    const bRow = ws.getRow(rowIdx)
+    // Transportation combines the flights lump-sum with the per-day transport budget.
+    const budgetAmt =
+      key === 'Transportation'
+        ? state.budgets.flights + state.budgets.transport * state.duration
+        : perTrip
+          ? state.budgets[budget as keyof typeof state.budgets]
+          : (state.budgets[budget as keyof typeof state.budgets] as number) * state.duration
+
+    ws.getCell(`F${rowIdx}`).value = key
+
+    // Estimated Budget (col G) — a plain, editable starting value derived from the
+    // wizard's budget selections. It is NOT a formula: it doesn't change when the trip
+    // dates change. Users simply type their own figure over it.
+    const gCell = ws.getCell(`G${rowIdx}`)
+    gCell.value = budgetAmt
+    gCell.numFmt = ts.numFmtCurrency
+
+    // Actual spent = per-category sheet totals + matching OTHER EXPENSES entries
+    const hCell = ws.getCell(`H${rowIdx}`)
+    hCell.value = { formula: buildActualSpentFormula(key, state) }
+    hCell.numFmt = ts.numFmtCurrency
+
+    // Remaining
+    const iCell = ws.getCell(`I${rowIdx}`)
+    iCell.value = { formula: `IFERROR(G${rowIdx}-H${rowIdx},G${rowIdx})` }
+    iCell.numFmt = ts.numFmtCurrency
+
+    // % Used
+    const jCell = ws.getCell(`J${rowIdx}`)
+    jCell.value = { formula: `IFERROR(H${rowIdx}/G${rowIdx},0)` }
+    jCell.numFmt = ts.numFmtPercent
+
+    // Status
+    const kCell = ws.getCell(`K${rowIdx}`)
+    kCell.value = {
+      formula: `IFERROR(IF(H${rowIdx}>G${rowIdx},"Over budget",IF(H${rowIdx}/G${rowIdx}>0.8,"Near limit","On track")),"On track")`,
+    }
+
+    // Col M: pie/donut chart helper — actual spend once logged, else budget estimate so
+    // the chart is never empty when the user hasn't entered spending yet.
+    const mCell = ws.getCell(`M${rowIdx}`)
+    mCell.value = { formula: `IF(H${rowIdx}>0,H${rowIdx},G${rowIdx})` }
+    mCell.numFmt = ts.numFmtCurrency
+
+    // Col N: bar chart helper — MIN(actual, budget), the colored "actual spent" segment
+    // (base of the stacked bar).
+    const nCell = ws.getCell(`N${rowIdx}`)
+    nCell.value = { formula: `MIN(H${rowIdx},G${rowIdx})` }
+    nCell.numFmt = ts.numFmtCurrency
+
+    // Col O: bar chart helper — MAX(budget - actual, 0), the light "remaining budget"
+    // segment stacked after col N so one bar = full budget (matches the Excel look in
+    // Google Sheets, which ignores overlap on clustered charts).
+    const oCell = ws.getCell(`O${rowIdx}`)
+    oCell.value = { formula: `MAX(G${rowIdx}-H${rowIdx},0)` }
+    oCell.numFmt = ts.numFmtCurrency
+
+    // Col P: bar chart helper — MAX(actual - budget, 0), the red "over budget" overage
+    // segment stacked after col O. Zero (invisible) when on/under budget; when spending
+    // exceeds the estimate it extends the bar past the budget length in red, mirroring
+    // the "turns red when over budget" preview shown in the wizard's chart picker.
+    const pCell = ws.getCell(`P${rowIdx}`)
+    pCell.value = { formula: `MAX(H${rowIdx}-G${rowIdx},0)` }
+    pCell.numFmt = ts.numFmtCurrency
+
+    styleDataRow(bRow, ts, i % 2 === 0)
+    rowIdx++
+  })
+
+  // Totals row
+  const totRow = ws.getRow(rowIdx)
+  ws.getCell(`F${rowIdx}`).value = 'TOTAL'
+  const gTot = ws.getCell(`G${rowIdx}`)
+  gTot.value = { formula: `SUM(G18:G${rowIdx - 1})` }
+  gTot.numFmt = ts.numFmtCurrency
+  const hTot = ws.getCell(`H${rowIdx}`)
+  hTot.value = { formula: `SUM(H18:H${rowIdx - 1})` }
+  hTot.numFmt = ts.numFmtCurrency
+  const iTot = ws.getCell(`I${rowIdx}`)
+  iTot.value = { formula: `SUM(I18:I${rowIdx - 1})` }
+  iTot.numFmt = ts.numFmtCurrency
+  styleTotalRow(totRow, ts)
+  rowIdx++
+
+  // ── Row spacer ──────────────────────────────────────────────────────────────
+  ws.getRow(rowIdx).height = 8
+  rowIdx++
+
+  // ── Visual Budget Breakdown ─────────────────────────────────────────────────
+  // The breakdown is a native chart object injected after export for every style
+  // (bar / pie / donut) — see chartInjection.ts. Nothing to render in-cell here.
+
+  // ── Column widths ───────────────────────────────────────────────────────────
+  ws.getColumn('A').width = 20
+  ws.getColumn('B').width = 3
+  ws.getColumn('C').width = 3
+  ws.getColumn('D').width = 28
+  ws.getColumn('E').width = 4
+  ws.getColumn('F').width = 20
+  ws.getColumn('G').width = 20
+  ws.getColumn('H').width = 16
+  ws.getColumn('I').width = 16
+  ws.getColumn('J').width = 11
+  ws.getColumn('K').width = 16
+
+  // Hide the chart's helper columns (chart plots hidden cells — see plotVisOnly in chartInjection)
+  ws.getColumn('M').hidden = true
+  ws.getColumn('N').hidden = true
+  ws.getColumn('O').hidden = true
+  ws.getColumn('P').hidden = true
+
+  // Hide the currency-dropdown options helper column (R)
+  ws.getColumn('R').hidden = true
+
+  // ── Cover photo (optional, anchored F3:K14) ─────────────────────────────────
+  if (state.overviewImage) {
+    const base64 = state.overviewImage.dataUrl.slice(state.overviewImage.dataUrl.indexOf(',') + 1)
+    // exceljs's `Image.buffer` type is a module-local `interface Buffer extends
+    // ArrayBuffer {}`, structurally distinct from Node/polyfilled `Buffer`
+    // (Uint8Array) — cast through ArrayBuffer, which it's structurally identical to.
+    const imageId = wb.addImage({ buffer: Buffer.from(base64, 'base64') as unknown as ArrayBuffer, extension: 'jpeg' })
+    ws.addImage(imageId, 'F3:K14')
+  }
+
+  // Freeze top 2 rows
+  ws.views = [{ state: 'frozen', xSplit: 0, ySplit: 2, activeCell: 'A3' }]
+}

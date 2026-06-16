@@ -1,0 +1,156 @@
+import type ExcelJS from 'exceljs'
+import type { ThemeStyles } from '../styleFactory'
+import type { RegionRec, PlaceRec } from '../../recommendations/types'
+import { styleSectionHeader, styleColumnHeader, styleDataRow, truncate, wrappedLineCount, rowHeightForLines } from '../styleFactory'
+
+// Enumerate single-letter columns from `from` to `to` inclusive (e.g. 'E'..'H').
+function colRange(from: string, to: string): string[] {
+  const out: string[] = []
+  for (let c = from.charCodeAt(0); c <= to.charCodeAt(0); c++) out.push(String.fromCharCode(c))
+  return out
+}
+
+export type InsertKind = 'hotels' | 'restaurants' | 'excursions'
+
+interface KindConfig {
+  title: string
+  lastCol: string // description spans E..lastCol; region banner spans A..lastCol
+  nameHeader: string
+  pick: (r: RegionRec) => PlaceRec[]
+  // Two attribute columns (C and D), each pulling a field off the PlaceRec
+  attr1: { header: string; field: keyof PlaceRec }
+  attr2: { header: string; field: keyof PlaceRec }
+}
+
+const CONFIG: Record<InsertKind, KindConfig> = {
+  hotels: {
+    title: 'RECOMMENDED ACCOMMODATION BY REGION',
+    lastCol: 'G',
+    nameHeader: 'Accommodation',
+    pick: (r) => r.hotels,
+    attr1: { header: 'Price', field: 'price' },
+    attr2: { header: 'Stars', field: 'rating' },
+  },
+  restaurants: {
+    title: 'RECOMMENDED DINING BY REGION',
+    lastCol: 'H',
+    nameHeader: 'Restaurant',
+    pick: (r) => r.restaurants,
+    attr1: { header: 'Cuisine', field: 'cuisine' },
+    attr2: { header: 'Price', field: 'price' },
+  },
+  excursions: {
+    title: 'RECOMMENDED EXCURSIONS BY REGION',
+    lastCol: 'H',
+    nameHeader: 'Excursion',
+    pick: (r) => r.excursions,
+    attr1: { header: 'Duration', field: 'duration' },
+    attr2: { header: 'Price', field: 'price' },
+  },
+}
+
+/**
+ * Renders an informational, AI-generated guide table below the working tracker on a
+ * tab. Places are grouped under a region/city banner (e.g. "Cayo District"). This is
+ * reference content only — it never feeds budget formulas and the user keeps logging
+ * their own bookings in the tracker above. Mirrors the donut "insert" idea: a self
+ * contained graphic dropped onto an existing sheet.
+ *
+ * @param startRow first row to write to (caller leaves a spacer above it)
+ */
+export function buildRecommendationInsert(
+  ws: ExcelJS.Worksheet,
+  startRow: number,
+  ts: ThemeStyles,
+  regions: RegionRec[] | undefined,
+  kind: InsertKind
+): void {
+  if (!regions?.length) return
+  const cfg = CONFIG[kind]
+
+  // Keep only regions that actually have at least one place of this kind.
+  const relevant = regions
+    .map((r) => ({ region: r.region, description: r.description, places: cfg.pick(r) }))
+    .filter((r) => r.places.length > 0)
+  if (!relevant.length) return
+
+  // Merged-cell widths (in chars) so we can size row heights — Excel won't auto-grow
+  // merged rows. Widths were already set by the caller, so read them back.
+  const colW = (c: string) => ws.getColumn(c).width ?? 10
+  const sumW = (cols: string[]) => cols.reduce((s, c) => s + colW(c), 0)
+  const nameWidth = sumW(['A', 'B'])
+  const descWidth = sumW(colRange('E', cfg.lastCol))
+  const fullWidth = sumW(colRange('A', cfg.lastCol))
+
+  let row = startRow
+
+  // ── Section header band ─────────────────────────────────────────────────────
+  ws.getCell(`A${row}`).value = `${cfg.title}  ·  Travel guide`
+  ws.mergeCells(`A${row}:${cfg.lastCol}${row}`)
+  styleSectionHeader(ws.getRow(row), ts)
+  row++
+
+  // ── Subtitle / disclaimer ───────────────────────────────────────────────────
+  const noteText =
+    'Informational suggestions only — use the tracker above to log your actual bookings.'
+  const noteCell = ws.getCell(`A${row}`)
+  noteCell.value = noteText
+  ws.mergeCells(`A${row}:${cfg.lastCol}${row}`)
+  noteCell.font = { name: ts.fontName, size: ts.sizes.data - 1, italic: true, color: { argb: 'FF888888' } }
+  noteCell.alignment = { vertical: 'middle', horizontal: 'left', wrapText: true }
+  ws.getRow(row).height = rowHeightForLines(wrappedLineCount(noteText, fullWidth), ts, { maxLines: 2 })
+  row++
+
+  // ── Column headers ──────────────────────────────────────────────────────────
+  ws.getCell(`A${row}`).value = cfg.nameHeader
+  ws.mergeCells(`A${row}:B${row}`)
+  ws.getCell(`C${row}`).value = cfg.attr1.header
+  ws.getCell(`D${row}`).value = cfg.attr2.header
+  ws.getCell(`E${row}`).value = 'Description'
+  ws.mergeCells(`E${row}:${cfg.lastCol}${row}`)
+  styleColumnHeader(ws.getRow(row), ts)
+  row++
+
+  // ── Region groups ───────────────────────────────────────────────────────────
+  let stripe = 0
+  relevant.forEach(({ region, description, places }) => {
+    // Region banner row (spans the full table width). Wrap + size it so long region
+    // blurbs aren't clipped at the merge boundary.
+    const bannerText = description
+      ? `📍  ${region}  —  ${truncate(description, 150)}`
+      : `📍  ${region}`
+    const bannerCell = ws.getCell(`A${row}`)
+    bannerCell.value = bannerText
+    ws.mergeCells(`A${row}:${cfg.lastCol}${row}`)
+    bannerCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: ts.palette.mediumBg } } as ExcelJS.Fill
+    bannerCell.font = { name: ts.fontName, size: ts.sizes.header, bold: true }
+    bannerCell.alignment = { vertical: 'middle', horizontal: 'left', wrapText: true }
+    ws.getRow(row).height = rowHeightForLines(wrappedLineCount(bannerText, fullWidth), ts, { min: 22, maxLines: 3 })
+    row++
+
+    places.forEach((place) => {
+      const r = row
+      const name = truncate(place.name, 80)
+      const desc = truncate(place.description, 240)
+      ws.getCell(`A${r}`).value = name
+      ws.mergeCells(`A${r}:B${r}`)
+      ws.getCell(`C${r}`).value = (place[cfg.attr1.field] as string | undefined) ?? ''
+      ws.getCell(`D${r}`).value = (place[cfg.attr2.field] as string | undefined) ?? ''
+      const descCell = ws.getCell(`E${r}`)
+      descCell.value = desc
+      ws.mergeCells(`E${r}:${cfg.lastCol}${r}`)
+
+      styleDataRow(ws.getRow(r), ts, stripe % 2 === 0)
+      stripe++
+
+      // Name bold + wraps; description wraps. Size row to the taller of the two
+      // merged cells (Excel won't auto-grow merged rows).
+      ws.getCell(`A${r}`).font = { name: ts.fontName, size: ts.sizes.data, bold: true }
+      ws.getCell(`A${r}`).alignment = { vertical: 'top', horizontal: 'left', wrapText: true }
+      descCell.alignment = { vertical: 'top', horizontal: 'left', wrapText: true }
+      const lines = Math.max(wrappedLineCount(name, nameWidth), wrappedLineCount(desc, descWidth))
+      ws.getRow(r).height = rowHeightForLines(lines, ts, { min: 22, maxLines: 8 })
+      row++
+    })
+  })
+}

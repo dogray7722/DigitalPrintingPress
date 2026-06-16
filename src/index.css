@@ -1,0 +1,26 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  *, *::before, *::after {
+    box-sizing: border-box;
+  }
+
+  body {
+    margin: 0;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  input[type="date"]::-webkit-calendar-picker-indicator {
+    opacity: 0.5;
+    cursor: pointer;
+  }
+
+  input[type="range"] {
+    height: 6px;
+    border-radius: 3px;
+    cursor: pointer;
+  }
+}
