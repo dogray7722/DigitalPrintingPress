@@ -1,6 +1,7 @@
 import type ExcelJS from 'exceljs'
 import type { WizardState } from '../../../types/wizard'
 import type { ThemeStyles } from '../styleFactory'
+import type { ExchangeRate } from '../../recommendations/types'
 import {
   styleTitleRow,
   styleSectionHeader,
@@ -12,7 +13,7 @@ import {
 } from '../styleFactory'
 import { computeTotalBudget } from '../../utils'
 import { THEMES } from '../../../types/theme'
-import { CURRENCIES, getCurrencySymbol } from '../../../data/currencies'
+import { CURRENCIES, getCurrencySymbol, getCurrencyNumFmt } from '../../../data/currencies'
 import { addDays } from 'date-fns'
 
 const BUDGET_CATEGORIES = [
@@ -55,10 +56,148 @@ function buildActualSpentFormula(category: string, state: WizardState): string {
   return `IFERROR(${terms.join('+')},0)`
 }
 
+// startRow = first row of the widget block (header row). Widget spans A:D only.
+// D{startRow+2} holds the live exchange rate — user can edit it directly to recalculate.
+function buildCurrencyWidget(
+  ws: ExcelJS.Worksheet,
+  ts: ThemeStyles,
+  er: ExchangeRate,
+  startRow: number,
+): void {
+  const { from, to, rate, fetchedAt } = er
+  const bc = ts.palette.border
+  const fromSym = getCurrencySymbol(from)
+  const toSym = getCurrencySymbol(to)
+  // Strip the quoted symbol prefix from getCurrencyNumFmt to get the plain number format
+  // (e.g. '"$"#,##0.00' → '#,##0.00', '"¥"#,##0' → '#,##0').
+  const fromNumFmt = getCurrencyNumFmt(from).replace(/^"[^"]*"/, '')
+  const toNumFmt = getCurrencyNumFmt(to).replace(/^"[^"]*"/, '')
+
+  const solid = (argb: string): ExcelJS.Fill =>
+    ({ type: 'pattern', pattern: 'solid', fgColor: { argb } } as ExcelJS.Fill)
+  const thin = (argb: string) => ({ style: 'thin' as const, color: { argb } })
+  const dv = ws as ExcelJS.Worksheet & { dataValidations: { add: (a: string, d: ExcelJS.DataValidation) => void } }
+
+  const r0 = startRow       // header
+  const r1 = startRow + 1   // left dropdown (A:C) | auto-opposite label (D)
+  const r2 = startRow + 2   // rate label (A:C) | editable rate number (D)
+  const r3 = startRow + 3   // timestamp
+  const r4 = startRow + 4   // input label (A:B) | live symbol (C) | number input (D)
+  const r5 = startRow + 5   // result label (A:B) | live symbol (C) | result formula (D)
+
+  // ── Header ──────────────────────────────────────────────────────────────────
+  ws.mergeCells(`A${r0}:D${r0}`)
+  const hdr = ws.getCell(`A${r0}`)
+  hdr.value = 'CURRENCY EXCHANGE'
+  hdr.fill = solid(ts.palette.primary)
+  hdr.font = { name: ts.fontName, size: ts.sizes.sectionHeader, bold: true, color: { argb: ts.palette.primaryText } }
+  hdr.alignment = { vertical: 'middle', horizontal: 'center' }
+
+  // ── Left dropdown (user picks either currency); right cell auto-shows the other ─
+  ws.mergeCells(`A${r1}:C${r1}`)
+  const fromDrop = ws.getCell(`A${r1}`)
+  fromDrop.value = from
+  fromDrop.fill = solid(ts.palette.secondary)
+  fromDrop.font = { name: ts.fontName, size: ts.sizes.header, bold: true, color: { argb: ts.palette.secondaryText } }
+  fromDrop.alignment = { vertical: 'middle', horizontal: 'center' }
+  fromDrop.border = { bottom: thin(bc) }
+  dv.dataValidations.add(`A${r1}`, {
+    type: 'list', allowBlank: false, formulae: [`"${from},${to}"`], showErrorMessage: false,
+  } as ExcelJS.DataValidation)
+
+  const oppCell = ws.getCell(`D${r1}`)
+  oppCell.value = { formula: `IF(A${r1}="${from}","${to}","${from}")`, result: to }
+  oppCell.fill = solid(ts.palette.secondary)
+  oppCell.font = { name: ts.fontName, size: ts.sizes.header, bold: true, color: { argb: ts.palette.secondaryText } }
+  oppCell.alignment = { vertical: 'middle', horizontal: 'center' }
+  oppCell.border = { bottom: thin(bc) }
+
+  // ── Rate row: static "1 FROM =" label (A:C) + user-editable rate number (D) ──
+  // D{r2} is the canonical from→to rate. Edit it directly in the sheet to
+  // recalculate — the conversion formula below references this cell, not a hidden cell.
+  ws.mergeCells(`A${r2}:B${r2}`)
+  const rateLbl = ws.getCell(`A${r2}`)
+  rateLbl.value = `1 ${from}  =`
+  rateLbl.fill = solid(ts.palette.mediumBg)
+  rateLbl.font = { name: ts.fontName, size: ts.sizes.sectionHeader, bold: true, color: { argb: ts.palette.secondaryText } }
+  rateLbl.alignment = { vertical: 'middle', horizontal: 'right' }
+
+  const rateSymCell = ws.getCell(`C${r2}`)
+  rateSymCell.value = toSym
+  rateSymCell.fill = solid(ts.palette.mediumBg)
+  rateSymCell.font = { name: ts.fontName, size: ts.sizes.sectionHeader, bold: true, color: { argb: ts.palette.secondaryText } }
+  rateSymCell.alignment = { vertical: 'middle', horizontal: 'right' }
+
+  const rateCell = ws.getCell(`D${r2}`)
+  rateCell.value = rate
+  rateCell.numFmt = '0.0000'
+  rateCell.fill = solid(ts.palette.mediumBg)
+  rateCell.font = { name: ts.fontName, size: ts.sizes.sectionHeader, bold: true, color: { argb: ts.palette.secondaryText } }
+  rateCell.alignment = { vertical: 'middle', horizontal: 'left' }
+
+  // ── Timestamp ─────────────────────────────────────────────────────────────────
+  ws.mergeCells(`A${r3}:D${r3}`)
+  const stamp = ws.getCell(`A${r3}`)
+  stamp.value = `Rate as of ${fetchedAt}`
+  stamp.fill = solid(ts.palette.lightBg)
+  stamp.font = { name: ts.fontName, size: Math.max(7, ts.sizes.data - 1), italic: true, color: { argb: ts.palette.secondaryText } }
+  stamp.alignment = { vertical: 'middle', horizontal: 'center' }
+
+  // ── Input row: label (A:B) | live symbol (C) | number input (D) ─────────────
+  // C{r4} is a formula cell that mirrors D{r1} to show the correct symbol
+  // (¥ or $) even when the user flips the left dropdown.
+  ws.mergeCells(`A${r4}:B${r4}`)
+  const inputLbl = ws.getCell(`A${r4}`)
+  inputLbl.value = { formula: `CONCATENATE("Amount in ",A${r1},":")`, result: `Amount in ${from}:` }
+  inputLbl.fill = solid(ts.palette.lightBg)
+  inputLbl.font = { name: ts.fontName, size: ts.sizes.data, bold: true, color: { argb: ts.palette.secondaryText } }
+  inputLbl.alignment = { vertical: 'middle', horizontal: 'right' }
+
+  const inputSym = ws.getCell(`C${r4}`)
+  inputSym.value = { formula: `IF(A${r1}="${from}","${fromSym}","${toSym}")`, result: fromSym }
+  inputSym.fill = solid(ts.palette.lightBg)
+  inputSym.font = { name: ts.fontName, size: ts.sizes.data, bold: true, color: { argb: ts.palette.secondaryText } }
+  inputSym.alignment = { vertical: 'middle', horizontal: 'right' }
+
+  const inputCell = ws.getCell(`D${r4}`)
+  inputCell.numFmt = fromNumFmt
+  inputCell.fill = solid('FFFFFFFF')
+  inputCell.font = { name: ts.fontName, size: ts.sizes.data }
+  inputCell.alignment = { vertical: 'middle', horizontal: 'left' }
+  inputCell.border = { bottom: thin(bc) }
+
+  // ── Result row: label (A:B) | live symbol (C) | converted amount (D) ─────────
+  // C{r5} mirrors the LEFT dropdown so the symbol flips with the direction.
+  // D{r5} references D{r2} (the editable rate) — recalculates on any rate change.
+  ws.mergeCells(`A${r5}:B${r5}`)
+  const resultLbl = ws.getCell(`A${r5}`)
+  resultLbl.value = { formula: `CONCATENATE("Converts to ",D${r1},":")`, result: `Converts to ${to}:` }
+  resultLbl.fill = solid(ts.palette.mediumBg)
+  resultLbl.font = { name: ts.fontName, size: ts.sizes.data, bold: true, color: { argb: ts.palette.secondaryText } }
+  resultLbl.alignment = { vertical: 'middle', horizontal: 'right' }
+
+  const resultSym = ws.getCell(`C${r5}`)
+  resultSym.value = { formula: `IF(A${r1}="${from}","${toSym}","${fromSym}")`, result: toSym }
+  resultSym.fill = solid(ts.palette.mediumBg)
+  resultSym.font = { name: ts.fontName, size: ts.sizes.data, bold: true, color: { argb: ts.palette.secondaryText } }
+  resultSym.alignment = { vertical: 'middle', horizontal: 'right' }
+
+  const resultCell = ws.getCell(`D${r5}`)
+  resultCell.value = {
+    formula: `IF(D${r4}="","",IF(A${r1}="${from}",IFERROR(D${r4}*D${r2},""),IFERROR(D${r4}/D${r2},"")))`,
+    result: '',
+  }
+  resultCell.numFmt = toNumFmt
+  resultCell.fill = solid(ts.palette.mediumBg)
+  resultCell.font = { name: ts.fontName, size: ts.sizes.data, bold: true, color: { argb: ts.palette.secondaryText } }
+  resultCell.alignment = { vertical: 'middle', horizontal: 'left' }
+}
+
 export function buildOverviewSheet(
   wb: ExcelJS.Workbook,
   state: WizardState,
-  ts: ThemeStyles
+  ts: ThemeStyles,
+  exchangeRate?: ExchangeRate
 ): void {
   const ws = wb.addWorksheet('OVERVIEW')
   ws.properties.tabColor = { argb: THEMES[state.theme].tabColor }
@@ -294,6 +433,11 @@ export function buildOverviewSheet(
   // ── Row spacer ──────────────────────────────────────────────────────────────
   ws.getRow(rowIdx).height = 8
   rowIdx++
+
+  // ── Currency Exchange Widget (cols A–D, rows 17–22) ─────────────────────────
+  // Sits left of the budget table (F16:K24) — same row band, different columns.
+  // Built after the budget table so widget fills override the row-level style passes.
+  if (exchangeRate) buildCurrencyWidget(ws, ts, exchangeRate, 17)
 
   // ── Visual Budget Breakdown ─────────────────────────────────────────────────
   // The breakdown is a native chart object injected after export for every style

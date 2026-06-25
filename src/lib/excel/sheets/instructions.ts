@@ -159,6 +159,10 @@ export function buildInstructionsSheet(
   );
   row++;
   bulletLine(
+    "ACCOMMODATION Date column: double-click any cell to open the date picker."
+  );
+  row++;
+  bulletLine(
     "DINING Date column: double-click any cell to open the date picker."
   );
   row++;
@@ -289,7 +293,7 @@ export function buildInstructionsSheet(
     },
     {
       id: "hotels",
-      tip: "Log accommodation bookings and a nightly rate — Cost mirrors the rate per row, and the total feeds the Accommodation budget."
+      tip: "Log accommodation costs row by row — use Cost Type to split out nightly rates, taxes, fees, and other charges, or choose Full Cost for a single all-in amount. The total feeds the Accommodation budget. The Date column supports the Google Sheets date picker."
     },
     {
       id: "restaurants",

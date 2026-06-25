@@ -56,3 +56,10 @@ export interface Recommendations {
   itinerary: ItineraryDay[]
   events: EventRec[]
 }
+
+export interface ExchangeRate {
+  from: string
+  to: string
+  rate: number
+  fetchedAt: string
+}

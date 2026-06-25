@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { DollarSign, Plane, Building2, Utensils, Compass, Bus, ShoppingBag, Wallet } from 'lucide-react'
+import { DollarSign, ArrowLeftRight, Plane, Building2, Utensils, Compass, Bus, ShoppingBag, Wallet } from 'lucide-react'
 import { useWizardStore } from '../../store/wizardStore'
 import { CurrencySelector } from '../shared/CurrencySelector'
 import { TRIP_STYLE_PRESETS, BUDGET_CATEGORIES } from '../../data/tripStylePresets'
@@ -49,7 +49,7 @@ const CATEGORY_ICONS = {
 }
 
 export function Step2Budget() {
-  const { currency, tripStyle, budgets, duration, partySize, setField } = useWizardStore()
+  const { currency, destinationCurrency, tripStyle, budgets, duration, partySize, setField } = useWizardStore()
 
   const totalBudget = computeTotalBudget(budgets, duration)
   const sym = getCurrencySymbol(currency)
@@ -61,16 +61,32 @@ export function Step2Budget() {
 
   return (
     <div className="space-y-7">
-      {/* Currency */}
-      <div>
-        <label className="flex items-center gap-2 text-sm font-semibold text-gray-700 mb-2">
-          <DollarSign size={15} className="text-indigo-500" />
-          Currency
-        </label>
-        <CurrencySelector
-          value={currency}
-          onChange={(code) => setField('currency', code)}
-        />
+      {/* Currency pair */}
+      <div className="space-y-3">
+        <div>
+          <label className="flex items-center gap-2 text-sm font-semibold text-gray-700 mb-2">
+            <DollarSign size={15} className="text-indigo-500" />
+            Budget Currency
+          </label>
+          <CurrencySelector
+            value={currency}
+            onChange={(code) => setField('currency', code)}
+          />
+        </div>
+        <div>
+          <label className="flex items-center gap-2 text-sm font-semibold text-gray-700 mb-1">
+            <ArrowLeftRight size={15} className="text-indigo-500" />
+            Destination Currency
+            <span className="ml-auto text-xs font-normal text-indigo-400 bg-indigo-50 px-2 py-0.5 rounded-full">AI only</span>
+          </label>
+          <p className="text-xs text-gray-400 mb-2">
+            The local currency at your destination — adds an exchange rate widget to your spreadsheet when AI is enabled.
+          </p>
+          <CurrencySelector
+            value={destinationCurrency || currency}
+            onChange={(code) => setField('destinationCurrency', code)}
+          />
+        </div>
       </div>
 
       {/* Trip style presets */}

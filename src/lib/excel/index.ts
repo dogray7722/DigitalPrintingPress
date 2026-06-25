@@ -1,6 +1,6 @@
 import ExcelJS from 'exceljs'
 import type { WizardState } from '../../types/wizard'
-import type { Recommendations } from '../recommendations/types'
+import type { Recommendations, ExchangeRate } from '../recommendations/types'
 import { configureWorkbook, addNamedRanges } from './workbookConfig'
 import { getThemeStyles } from './styleFactory'
 import { injectChart, CHART_PALETTES } from './chartInjection'
@@ -19,7 +19,8 @@ import { buildInstructionsSheet } from './sheets/instructions'
 
 export async function generateWorkbook(
   state: WizardState,
-  recommendations?: Recommendations
+  recommendations?: Recommendations,
+  exchangeRate?: ExchangeRate
 ): Promise<Blob> {
   const wb = new ExcelJS.Workbook()
   const ts = getThemeStyles(state)
@@ -27,7 +28,7 @@ export async function generateWorkbook(
   configureWorkbook(wb, state)
 
   // OVERVIEW is always first and always included
-  buildOverviewSheet(wb, state, ts)
+  buildOverviewSheet(wb, state, ts, exchangeRate)
 
   // Optional sheets in logical order, with recommendations prefill
   if (state.sheets.itinerary) buildItinerarySheet(wb, state, ts, recommendations?.itinerary)

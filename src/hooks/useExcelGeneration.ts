@@ -1,6 +1,6 @@
 import { useState, useCallback } from 'react'
 import type { WizardState } from '../types/wizard'
-import type { Recommendations } from '../lib/recommendations/types'
+import type { Recommendations, ExchangeRate } from '../lib/recommendations/types'
 
 type Status = 'idle' | 'researching' | 'generating' | 'success' | 'error'
 
@@ -12,23 +12,33 @@ export function useExcelGeneration() {
     setError(null)
 
     let recommendations: Recommendations | undefined
+    let exchangeRate: ExchangeRate | undefined
 
     try {
       if (state.useRecommendations && state.destination.trim()) {
         setStatus('researching')
-        const { fetchRecommendations } = await import('../lib/recommendations/client')
-        recommendations = await fetchRecommendations({
-          destination: state.destination,
-          duration: state.duration,
-          partySize: state.partySize,
-          travelMonth: state.travelMonth,
-          tripStyle: state.tripStyle,
-        })
+        const { fetchRecommendations, fetchExchangeRate } = await import('../lib/recommendations/client')
+        const needsRate = state.destinationCurrency &&
+          state.destinationCurrency !== state.currency
+        const [recs, rate] = await Promise.all([
+          fetchRecommendations({
+            destination: state.destination,
+            duration: state.duration,
+            partySize: state.partySize,
+            travelMonth: state.travelMonth,
+            tripStyle: state.tripStyle,
+          }),
+          needsRate
+            ? fetchExchangeRate(state.currency, state.destinationCurrency)
+            : Promise.resolve(null),
+        ])
+        recommendations = recs
+        exchangeRate = rate ?? undefined
       }
 
       setStatus('generating')
       const { generateWorkbook } = await import('../lib/excel')
-      const blob = await generateWorkbook(state, recommendations)
+      const blob = await generateWorkbook(state, recommendations, exchangeRate)
 
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')

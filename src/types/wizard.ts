@@ -68,6 +68,7 @@ export interface WizardState {
 
   // Step 2
   currency: string
+  destinationCurrency: string
   tripStyle: TripStyle
   budgets: BudgetAmounts
 
@@ -93,6 +94,7 @@ export const DEFAULT_STATE: WizardState = {
   overviewImage: null,
 
   currency: 'USD',
+  destinationCurrency: '',
   tripStyle: 'midrange',
   // Defaults bumped ~30% over prior estimates to reflect current (inflationary) prices.
   budgets: {

@@ -4,7 +4,6 @@ import type { ThemeStyles } from '../styleFactory'
 import type { RegionRec } from '../../recommendations/types'
 import { styleTitleRow, styleSectionHeader, styleColumnHeader, styleDataCell, styleTotalRow } from '../styleFactory'
 import { THEMES } from '../../../types/theme'
-import { addDays } from 'date-fns'
 import { buildRecommendationInsert } from './recommendationInsert'
 
 export function buildHotelsSheet(
@@ -15,8 +14,6 @@ export function buildHotelsSheet(
 ): void {
   const ws = wb.addWorksheet('ACCOMMODATION')
   ws.properties.tabColor = { argb: THEMES[state.theme].tabColor }
-
-  const startDate = state.startDate ? new Date(state.startDate) : new Date()
 
   // Title
   ws.getCell('A1').value = 'ACCOMMODATION'
@@ -46,11 +43,20 @@ export function buildHotelsSheet(
   ws.getCell('G5').value = 'Notes'
   styleColumnHeader(ws.getRow(5), ts)
 
+  // Date validation (col A) — triggers Google Sheets native date picker on double-click.
+  ;(ws as any).dataValidations.add('A6:A25', {
+    type: 'date',
+    operator: 'between',
+    formulae: [new Date(2000, 0, 1), new Date(2100, 0, 1)],
+    allowBlank: true,
+    showErrorMessage: false,
+  } as ExcelJS.DataValidation)
+
   // Cost Type dropdown (col D)
   ;(ws as any).dataValidations.add('D6:D25', {
     type: 'list',
     allowBlank: true,
-    formulae: ['"Nightly Rate,Taxes,Fees,Parking,Other"'],
+    formulae: ['"Full Cost,Nightly Rate,Taxes,Fees,Parking,Other"'],
     showErrorMessage: false,
   } as ExcelJS.DataValidation)
 
@@ -59,13 +65,7 @@ export function buildHotelsSheet(
     const rowNum = 6 + i
     const row = ws.getRow(rowNum)
 
-    // Seed only the first row's Date from the TripStart named range (the trip start
-    // date), auto-updating if the user changes it on OVERVIEW. Cache a result so it
-    // renders before the first recalc. Remaining date cells are left blank for the user.
     const dateCell = ws.getCell(`A${rowNum}`)
-    if (i === 0) {
-      dateCell.value = { formula: 'IFERROR(TripStart,"")', result: startDate }
-    }
     dateCell.numFmt = ts.numFmtDate
     ws.getCell(`E${rowNum}`).numFmt = ts.numFmtCurrency
 
@@ -92,7 +92,7 @@ export function buildHotelsSheet(
   ws.getColumn('D').width = 16
   ws.getColumn('E').width = 14
   ws.getColumn('F').width = 20
-  ws.getColumn('G').width = 30
+  ws.getColumn('G').width = 39
 
   // Informational AI guide below the tracker (TOTAL row is 26; leave a spacer)
   buildRecommendationInsert(ws, totRow + 2, ts, regions, 'hotels')

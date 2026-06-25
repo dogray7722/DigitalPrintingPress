@@ -1,6 +1,8 @@
 import type { Plugin, ViteDevServer } from 'vite'
 import type { IncomingMessage, ServerResponse } from 'http'
 import Anthropic from '@anthropic-ai/sdk'
+import path from 'path'
+import fs from 'fs'
 
 const MONTH_NAMES = [
   'January', 'February', 'March', 'April', 'May', 'June',
@@ -15,8 +17,13 @@ interface RecommendationInput {
   tripStyle: 'budget' | 'midrange' | 'luxury'
 }
 
-// Module-level client — instantiated once, reused across all requests.
-const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY ?? '' })
+// Lazy singleton — deferred until first request so that loadEnv() in vite.config.ts
+// has already populated process.env before the SDK reads ANTHROPIC_API_KEY.
+let _client: Anthropic | null = null
+function getClient(): Anthropic {
+  if (!_client) _client = new Anthropic()
+  return _client
+}
 
 // ---------------------------------------------------------------------------
 // Prompt constants — static content is separated from dynamic content so that
@@ -106,16 +113,125 @@ CONSTRAINTS
 
 interface CacheEntry { data: unknown; expiresAt: number }
 const responseCache = new Map<string, CacheEntry>()
-const CACHE_TTL_MS = 60 * 60 * 1000 // 1 hour
+const CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000 // 30 days
+
+const CACHE_FILE_PATH = path.resolve(process.cwd(), '.recommendations-cache.json')
+
+function loadCacheFromDisk(): void {
+  try {
+    const raw = fs.readFileSync(CACHE_FILE_PATH, 'utf8')
+    const entries = JSON.parse(raw) as Array<[string, CacheEntry]>
+    const now = Date.now()
+    for (const [key, entry] of entries) {
+      if (entry.expiresAt > now) responseCache.set(key, entry)
+    }
+    console.log(`[recommendations] loaded ${responseCache.size} cached destination(s) from disk`)
+  } catch {
+    // File doesn't exist yet or is corrupt — start with empty cache
+  }
+}
+
+function saveCacheToDisk(): void {
+  try {
+    fs.writeFileSync(CACHE_FILE_PATH, JSON.stringify([...responseCache.entries()]), 'utf8')
+  } catch {
+    // Non-fatal — cache will still work in-memory this session
+  }
+}
+
+loadCacheFromDisk()
+
+// ---------------------------------------------------------------------------
+// Exchange rate cache — same 30-day TTL, keyed by "FROM-TO" pair
+// ---------------------------------------------------------------------------
+
+interface ExchangeRateEntry { from: string; to: string; rate: number; fetchedAt: string }
+interface ExchangeRateCacheEntry { data: ExchangeRateEntry; expiresAt: number }
+const exchangeRateCache = new Map<string, ExchangeRateCacheEntry>()
+const EXCHANGE_RATE_CACHE_FILE = path.resolve(process.cwd(), '.exchange-rate-cache.json')
+
+function loadExchangeRateCache(): void {
+  try {
+    const raw = fs.readFileSync(EXCHANGE_RATE_CACHE_FILE, 'utf8')
+    const entries = JSON.parse(raw) as Array<[string, ExchangeRateCacheEntry]>
+    const now = Date.now()
+    for (const [key, entry] of entries) {
+      if (entry.expiresAt > now) exchangeRateCache.set(key, entry)
+    }
+    console.log(`[exchange-rate] loaded ${exchangeRateCache.size} cached pair(s) from disk`)
+  } catch {
+    // File doesn't exist yet or is corrupt — start with empty cache
+  }
+}
+
+function saveExchangeRateCache(): void {
+  try {
+    fs.writeFileSync(EXCHANGE_RATE_CACHE_FILE, JSON.stringify([...exchangeRateCache.entries()]), 'utf8')
+  } catch {
+    // Non-fatal
+  }
+}
+
+loadExchangeRateCache()
+
+function formatFetchedAt(date: Date): string {
+  const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+  return `${date.getDate()} ${months[date.getMonth()]} ${date.getFullYear()}`
+}
+
+async function generateExchangeRate(from: string, to: string): Promise<ExchangeRateEntry> {
+  if (!process.env.ANTHROPIC_API_KEY) {
+    throw new Error('ANTHROPIC_API_KEY is not set.')
+  }
+
+  const cacheKey = `${from}-${to}`
+  const cached = exchangeRateCache.get(cacheKey)
+  if (cached && cached.expiresAt > Date.now()) {
+    console.log(`[exchange-rate] cache hit for ${cacheKey}`)
+    return cached.data
+  }
+
+  const message = await getClient().messages.create({
+    model: 'claude-haiku-4-5-20251001',
+    max_tokens: 256,
+    tools: [{ type: 'web_search_20250305' as const, name: 'web_search', max_uses: 2 }],
+    messages: [{
+      role: 'user',
+      content: `Search for the current ${from} to ${to} exchange rate today. Return ONLY a JSON object: {"rate": <number>}. The rate should be how many ${to} equal 1 ${from}. No other text.`,
+    }],
+  })
+
+  const textBlocks = message.content
+    .filter((b: { type: string }) => b.type === 'text')
+    .map((b: { type: string; text?: string }) => b.text ?? '')
+    .join('\n')
+
+  let rate: number | null = null
+  try {
+    const jsonStr = extractJson(textBlocks)
+    const parsed = JSON.parse(jsonStr) as { rate?: unknown }
+    if (typeof parsed.rate === 'number' && parsed.rate > 0) rate = parsed.rate
+  } catch {
+    const match = textBlocks.match(/\d[\d,]*\.?\d*/g)
+    if (match) {
+      const num = parseFloat(match[0].replace(/,/g, ''))
+      if (num > 0) rate = num
+    }
+  }
+
+  if (rate === null) throw new Error(`Could not parse exchange rate for ${from}→${to}`)
+
+  console.log(`[exchange-rate] ${from}→${to} = ${rate}`)
+
+  const result: ExchangeRateEntry = { from, to, rate, fetchedAt: formatFetchedAt(new Date()) }
+  exchangeRateCache.set(cacheKey, { data: result, expiresAt: Date.now() + CACHE_TTL_MS })
+  saveExchangeRateCache()
+
+  return result
+}
 
 function getCacheKey(input: RecommendationInput): string {
-  return JSON.stringify([
-    input.destination.trim().toLowerCase(),
-    input.duration,
-    input.partySize,
-    input.travelMonth,
-    input.tripStyle,
-  ])
+  return input.destination.trim().toLowerCase()
 }
 
 // ---------------------------------------------------------------------------
@@ -185,7 +301,7 @@ async function generateRecommendations(input: RecommendationInput) {
     return cached.data
   }
 
-  const message = await client.messages.create({
+  const message = await getClient().messages.create({
     model: 'claude-sonnet-4-6',
     max_tokens: 16000,
     // cache_control on system covers the tools + system prefix together.
@@ -246,8 +362,9 @@ async function generateRecommendations(input: RecommendationInput) {
   const jsonStr = extractJson(textBlocks)
   const result = JSON.parse(jsonStr)
 
-  // Populate response cache.
+  // Populate response cache and persist to disk.
   responseCache.set(cacheKey, { data: result, expiresAt: Date.now() + CACHE_TTL_MS })
+  saveCacheToDisk()
 
   return result
 }
@@ -273,6 +390,35 @@ export function recommendationsPlugin(): Plugin {
   return {
     name: 'travel-recommendations',
     configureServer(server: ViteDevServer) {
+      server.middlewares.use('/api/exchange-rate', async (req: IncomingMessage, res: ServerResponse) => {
+        if (req.method !== 'POST') {
+          res.statusCode = 405
+          res.setHeader('Content-Type', 'application/json')
+          res.end(JSON.stringify({ error: 'Method not allowed' }))
+          return
+        }
+        try {
+          const rawBody = await readBody(req)
+          const body = JSON.parse(rawBody) as { from?: string; to?: string }
+          if (!body.from?.trim() || !body.to?.trim()) {
+            res.statusCode = 400
+            res.setHeader('Content-Type', 'application/json')
+            res.end(JSON.stringify({ error: 'from and to are required' }))
+            return
+          }
+          const result = await generateExchangeRate(body.from.toUpperCase(), body.to.toUpperCase())
+          res.statusCode = 200
+          res.setHeader('Content-Type', 'application/json')
+          res.end(JSON.stringify(result))
+        } catch (err) {
+          const message = err instanceof Error ? err.message : 'Internal error'
+          console.error('[exchange-rate] error:', err)
+          res.statusCode = 500
+          res.setHeader('Content-Type', 'application/json')
+          res.end(JSON.stringify({ error: message }))
+        }
+      })
+
       server.middlewares.use('/api/recommendations', async (req: IncomingMessage, res: ServerResponse) => {
         if (req.method !== 'POST') {
           res.statusCode = 405

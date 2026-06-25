@@ -1,4 +1,4 @@
-import type { Recommendations, RecommendationRequest, RegionRec, PlaceRec } from './types'
+import type { Recommendations, RecommendationRequest, RegionRec, PlaceRec, ExchangeRate } from './types'
 
 function normalizePlaces(raw: unknown): PlaceRec[] {
   if (!Array.isArray(raw)) return []
@@ -25,6 +25,20 @@ function normalizeRegions(raw: unknown): RegionRec[] {
       restaurants: normalizePlaces(r.restaurants),
       excursions: normalizePlaces(r.excursions),
     }))
+}
+
+export async function fetchExchangeRate(from: string, to: string): Promise<ExchangeRate | null> {
+  try {
+    const resp = await fetch('/api/exchange-rate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ from, to }),
+    })
+    if (!resp.ok) return null
+    return (await resp.json()) as ExchangeRate
+  } catch {
+    return null
+  }
 }
 
 export async function fetchRecommendations(
