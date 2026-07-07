@@ -63,7 +63,8 @@ const KINDS = [
       '<c:barDir val="bar"/>',
       '<c:grouping val="stacked"/>',     // stacked, not clustered (Google Sheets ignores overlap)
       '<c:overlap val="100"/>',
-      '<a:pattFill prst="ltDnDiag">',   // light "remaining budget" track
+      '<a:noFill/>',                    // no borders on any segment (equal bar height)
+      '<a:pattFill prst="ltDnDiag">',  // hatched "remaining budget" track
       '<a:srgbClr val="E53935"/>',      // solid red "over budget" overage segment
       '<c:catAx>', '<c:valAx>',
       '<c:orientation val="maxMin"/>',  // first category at top, matching the table order
@@ -74,7 +75,7 @@ const KINDS = [
       remainderRange: "'OVERVIEW'!$O$18:$O$23",
       overRange: "'OVERVIEW'!$P$18:$P$23",
     },
-    // bar has 3 series but dPts only on the colored "spent" series (idx=0)
+    // bar has 3 series; dPts only on Series 0 (spent, per-category theme colors)
     expectedDPts: 6,
     valueRangeCheck: "'OVERVIEW'!$N$18:$N$23",
   },

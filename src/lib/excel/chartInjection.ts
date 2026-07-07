@@ -82,6 +82,17 @@ function toRgb(hex: string): string {
   return (clean.length === 8 ? clean.slice(2) : clean).toUpperCase()
 }
 
+/** Lighten an ARGB/RGB hex color by mixing it toward white by `factor` (0–1). */
+function lightenColor(argb: string, factor: number): string {
+  const rgb = toRgb(argb)
+  const r = parseInt(rgb.slice(0, 2), 16)
+  const g = parseInt(rgb.slice(2, 4), 16)
+  const b = parseInt(rgb.slice(4, 6), 16)
+  return [r, g, b]
+    .map(v => Math.round(v + (255 - v) * factor).toString(16).padStart(2, '0').toUpperCase())
+    .join('')
+}
+
 /** Highest existing rId number in a .rels file (0 if none / file absent). */
 function maxRelId(relsXml: string | null): number {
   if (!relsXml) return 0
@@ -105,7 +116,8 @@ function buildChartXml(opts: InjectChartOptions): string {
     .map(
       (c, i) =>
         `<c:dPt><c:idx val="${i}"/><c:bubble3D val="0"/>` +
-        `<c:spPr><a:solidFill><a:srgbClr val="${toRgb(c)}"/></a:solidFill></c:spPr></c:dPt>`
+        `<c:spPr><a:solidFill><a:srgbClr val="${toRgb(c)}"/></a:solidFill>` +
+        `<a:ln><a:noFill/></a:ln></c:spPr></c:dPt>`
     )
     .join('')
 
@@ -154,20 +166,21 @@ function buildChartXml(opts: InjectChartOptions): string {
     // overlap and renders clustered series as two separate bars; stacked renders the same
     // single bar in both Excel and Google Sheets.
 
+    // Hatched "remaining budget" track — no border so bar height matches the spent segment.
     const remainderFill =
       `<c:spPr>` +
       `<a:pattFill prst="ltDnDiag">` +
       `<a:fgClr><a:srgbClr val="B0BEC5"/></a:fgClr>` +
       `<a:bgClr><a:srgbClr val="ECEFF1"/></a:bgClr>` +
       `</a:pattFill>` +
-      `<a:ln><a:solidFill><a:srgbClr val="B0BEC5"/></a:solidFill></a:ln>` +
+      `<a:ln><a:noFill/></a:ln>` +
       `</c:spPr>`
 
-    // Solid red overage segment, with a slightly darker red outline.
+    // Solid red overage segment — no border so bar height matches the other segments.
     const overFill =
       `<c:spPr>` +
       `<a:solidFill><a:srgbClr val="E53935"/></a:solidFill>` +
-      `<a:ln><a:solidFill><a:srgbClr val="C62828"/></a:solidFill></a:ln>` +
+      `<a:ln><a:noFill/></a:ln>` +
       `</c:spPr>`
 
     const remainderValRef = `<c:val><c:numRef><c:f>${escapeXml(opts.remainderRange ?? opts.valueRange)}</c:f></c:numRef></c:val>`
@@ -185,7 +198,7 @@ function buildChartXml(opts: InjectChartOptions): string {
       catRef +
       valRef +
       `</c:ser>` +
-      // idx=1: remaining budget (stacked after, light diagonal track)
+      // idx=1: remaining budget (stacked after, light diagonal-pattern track)
       `<c:ser><c:idx val="1"/><c:order val="1"/>` +
       remainderFill +
       noLbls +
@@ -211,6 +224,11 @@ function buildChartXml(opts: InjectChartOptions): string {
       `<c:axId val="${BAR_CAT_AX_ID}"/>` +
       `<c:scaling><c:orientation val="maxMin"/></c:scaling>` +
       `<c:delete val="0"/><c:axPos val="l"/>` +
+      // No tick marks, but keep a plain axis line + the category labels (the "scale"
+      // look in Excel is the ticks, not numbers — the cat axis has no numbers).
+      `<c:majorTickMark val="none"/><c:minorTickMark val="none"/>` +
+      `<c:tickLblPos val="nextTo"/>` +
+      `<c:spPr><a:ln><a:solidFill><a:srgbClr val="808080"/></a:solidFill></a:ln></c:spPr>` +
       `<c:crossAx val="${BAR_VAL_AX_ID}"/>` +
       `</c:catAx>` +
       // valAx crosses at max so the value scale stays along the BOTTOM after the category

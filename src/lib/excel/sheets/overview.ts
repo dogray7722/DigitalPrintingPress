@@ -437,7 +437,10 @@ export function buildOverviewSheet(
   // ── Currency Exchange Widget (cols A–D, rows 17–22) ─────────────────────────
   // Sits left of the budget table (F16:K24) — same row band, different columns.
   // Built after the budget table so widget fills override the row-level style passes.
-  if (exchangeRate) buildCurrencyWidget(ws, ts, exchangeRate, 17)
+  // Skip when source/target match — a same-currency converter (rate 1.0) is meaningless.
+  if (exchangeRate && exchangeRate.from !== exchangeRate.to) {
+    buildCurrencyWidget(ws, ts, exchangeRate, 17)
+  }
 
   // ── Visual Budget Breakdown ─────────────────────────────────────────────────
   // The breakdown is a native chart object injected after export for every style
