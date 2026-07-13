@@ -26,7 +26,7 @@ export function buildExcursionsSheet(
   ws.getCell('A3').value = 'TOTAL ACTIVITIES COST'
   ws.getCell('A3').font = { name: ts.fontName, size: ts.sizes.header, bold: true }
   ws.mergeCells('A3:D3')
-  ws.getCell('H3').value = { formula: 'IFERROR(SUM(H6:H35),0)' }
+  ws.getCell('H3').value = { formula: 'IFERROR(SUM(H6:H35),0)', result: 0 }
   ws.getCell('H3').numFmt = ts.numFmtCurrency
   ws.getCell('H3').font = { name: ts.fontName, size: ts.sizes.header, bold: true }
   ws.getRow(3).height = 22
@@ -90,7 +90,7 @@ export function buildExcursionsSheet(
     // Cost — Per Person: Unit Cost × # Travelers; Per Group (or blank): Unit Cost as entered.
     // IFERROR catches blank inputs and returns "" so empty rows stay clean.
     const hCell = ws.getCell(`H${rowNum}`)
-    hCell.value = { formula: `IFERROR(IF(E${rowNum}="Per Person",F${rowNum}*G${rowNum},F${rowNum}),"")` }
+    hCell.value = { formula: `IFERROR(IF(E${rowNum}="Per Person",F${rowNum}*G${rowNum},F${rowNum}),"")`, result: '' }
     hCell.numFmt = ts.numFmtCurrency
 
     styleDataRow(row, ts, i % 2 === 0)
@@ -100,7 +100,7 @@ export function buildExcursionsSheet(
   const totRow = 36
   ws.getCell(`A${totRow}`).value = 'TOTAL'
   const hTot = ws.getCell(`H${totRow}`)
-  hTot.value = { formula: 'IFERROR(SUM(H6:H35),0)' }
+  hTot.value = { formula: 'IFERROR(SUM(H6:H35),0)', result: 0 }
   hTot.numFmt = ts.numFmtCurrency
   styleTotalRow(ws.getRow(totRow), ts)
 

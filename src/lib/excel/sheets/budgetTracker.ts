@@ -31,7 +31,7 @@ export function buildBudgetTrackerSheet(
   ws.getCell('A3').value = 'TOTAL SPENT'
   ws.mergeCells('A3:C3')
   ws.getCell('A3').font = { name: ts.fontName, size: ts.sizes.header, bold: true }
-  ws.getCell('D3').value = { formula: 'IFERROR(SUM(D8:D57),0)' }
+  ws.getCell('D3').value = { formula: 'IFERROR(SUM(D8:D57),0)', result: 0 }
   ws.getCell('D3').numFmt = ts.numFmtCurrency
   ws.getCell('D3').font = { name: ts.fontName, size: ts.sizes.header, bold: true }
   ws.getRow(3).height = 22
@@ -95,7 +95,7 @@ export function buildBudgetTrackerSheet(
   const totRow = 58
   ws.getCell(`A${totRow}`).value = 'TOTAL'
   const dTot = ws.getCell(`D${totRow}`)
-  dTot.value = { formula: 'IFERROR(SUM(D8:D57),0)' }
+  dTot.value = { formula: 'IFERROR(SUM(D8:D57),0)', result: 0 }
   dTot.numFmt = ts.numFmtCurrency
   styleTotalRow(ws.getRow(totRow), ts)
 

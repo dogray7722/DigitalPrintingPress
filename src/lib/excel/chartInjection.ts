@@ -53,6 +53,20 @@ export interface InjectChartOptions {
   colors: string[]
   /** Optional chart title. */
   title?: string
+  /**
+   * Category labels for the <c:strCache>, in categoryRange (F18:F23) order.
+   * Excel-native charts always serialize cached data points alongside the formula
+   * refs; without them Excel's redraw renders one edit BEHIND the cells (the redraw
+   * uses the cached series and refreshes the cache as a separate step). Values must
+   * match what the referenced cells hold at generation time.
+   */
+  categoryLabels?: string[]
+  /** Generation-time values of valueRange cells, for the <c:numCache>. */
+  values?: number[]
+  /** Bar only — generation-time values of remainderRange (col O). */
+  remainderValues?: number[]
+  /** Bar only — generation-time values of overRange (col P). */
+  overValues?: number[]
 }
 
 const C_NS = 'http://schemas.openxmlformats.org/drawingml/2006/chart'
@@ -110,6 +124,28 @@ function maxRelId(relsXml: string | null): number {
 const BAR_CAT_AX_ID = '111111111'
 const BAR_VAL_AX_ID = '222222222'
 
+// Cached data points inside the series refs (<c:strCache>/<c:numCache>) — the
+// structure Excel itself always writes. Schema order within CT_StrRef/CT_NumRef is
+// <c:f> first, then the cache. When labels/values are absent the ref is emitted
+// bare, preserving the pre-cache behavior.
+function strRefWithCache(range: string, labels?: string[]): string {
+  const cache = labels?.length
+    ? `<c:strCache><c:ptCount val="${labels.length}"/>` +
+      labels.map((l, i) => `<c:pt idx="${i}"><c:v>${escapeXml(l)}</c:v></c:pt>`).join('') +
+      `</c:strCache>`
+    : ''
+  return `<c:strRef><c:f>${escapeXml(range)}</c:f>${cache}</c:strRef>`
+}
+
+function numRefWithCache(range: string, values?: number[]): string {
+  const cache = values?.length
+    ? `<c:numCache><c:formatCode>General</c:formatCode><c:ptCount val="${values.length}"/>` +
+      values.map((v, i) => `<c:pt idx="${i}"><c:v>${v}</c:v></c:pt>`).join('') +
+      `</c:numCache>`
+    : ''
+  return `<c:numRef><c:f>${escapeXml(range)}</c:f>${cache}</c:numRef>`
+}
+
 function buildChartXml(opts: InjectChartOptions): string {
   // Per-category colors so each slice/bar picks up the theme palette.
   const dPts = opts.colors
@@ -127,8 +163,8 @@ function buildChartXml(opts: InjectChartOptions): string {
       `<c:overlay val="0"/></c:title><c:autoTitleDeleted val="0"/>`
     : `<c:autoTitleDeleted val="1"/>`
 
-  const catRef = `<c:cat><c:strRef><c:f>${escapeXml(opts.categoryRange)}</c:f></c:strRef></c:cat>`
-  const valRef = `<c:val><c:numRef><c:f>${escapeXml(opts.valueRange)}</c:f></c:numRef></c:val>`
+  const catRef = `<c:cat>${strRefWithCache(opts.categoryRange, opts.categoryLabels)}</c:cat>`
+  const valRef = `<c:val>${numRefWithCache(opts.valueRange, opts.values)}</c:val>`
 
   // Pie/donut: category name + percentage; all three bar series: no labels
   // (the table below the chart already shows the numbers).
@@ -183,8 +219,8 @@ function buildChartXml(opts: InjectChartOptions): string {
       `<a:ln><a:noFill/></a:ln>` +
       `</c:spPr>`
 
-    const remainderValRef = `<c:val><c:numRef><c:f>${escapeXml(opts.remainderRange ?? opts.valueRange)}</c:f></c:numRef></c:val>`
-    const overValRef = `<c:val><c:numRef><c:f>${escapeXml(opts.overRange ?? opts.valueRange)}</c:f></c:numRef></c:val>`
+    const remainderValRef = `<c:val>${numRefWithCache(opts.remainderRange ?? opts.valueRange, opts.remainderValues ?? opts.values)}</c:val>`
+    const overValRef = `<c:val>${numRefWithCache(opts.overRange ?? opts.valueRange, opts.overValues ?? opts.values)}</c:val>`
 
     plotBody =
       `<c:barChart>` +

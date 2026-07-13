@@ -49,6 +49,7 @@ export function buildTasksSheet(
   ws.getCell('A2').value = {
     formula:
       'IFERROR("TASK PROGRESS: "&TEXT(COUNTIF(D5:D500,"✓")/COUNTA(B5:B500),"0%")&" complete","TASK PROGRESS")',
+    result: 'TASK PROGRESS: 0% complete',
   }
   ws.mergeCells('A2:F2')
   ws.getCell('A2').font = {

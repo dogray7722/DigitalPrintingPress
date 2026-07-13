@@ -79,6 +79,16 @@ ExcelJS has no `addChart` API. Charts are injected via `src/lib/excel/chartInjec
 
 Verify charts: `node scripts/verify-chart-injection.mjs`
 
+## Recalculation Contract (Excel for Mac chart repaint)
+
+ExcelJS never writes `xl/calcChain.xml`. Without it, Excel for Mac mis-orders its chart-refresh hooks and the injected chart repaints **one calculation behind the cells** (each typed cost shows the *previous* entry's bars). The fix is a three-part contract — **keep all three in sync**:
+
+1. **`injectCalcChain()`** (`src/lib/excel/calcChain.ts`, runs after `injectChart` in `index.ts`) writes the calcChain part and pins `<calcPr calcId="191029"/>` (ExcelJS hardcodes 171027 with no API).
+2. **Never set `wb.calcProperties.fullCalcOnLoad`** — the full rebuild it forces on load re-breaks the repaint ordering.
+3. **Every formula cell must carry a correct cached `result:`** — with a native calcId, Excel trusts caches on open and won't recalc, so an uncached formula renders blank.
+
+Also: OVERVIEW "Actual Spent" formulas must sum tracker **data rows directly** (e.g. `SUM('ACCOMMODATION'!$E$6:$E$25)`), never tracker TOTAL cells; and the injected chart series carry `<c:strCache>`/`<c:numCache>` data points matching the cells' cached results (`categoryBudgetAmounts()` in `overview.ts` feeds both). Diagnosed by diffing our output against the same workbook re-saved natively by Excel; verified by typing tests in Excel for Mac 16.110.
+
 ## Themes, Fonts, Chart Styles
 
 - **4 color themes:** Sakura, Ocean, Forest, Desert (defined in `src/types/theme.ts`; `ThemePicker` auto-lists from `Object.keys(THEMES)`)

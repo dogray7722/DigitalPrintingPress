@@ -40,7 +40,7 @@ export function buildRestaurantsSheet(
   ws.mergeCells("A3:D3");
   // Cost is now col G; data rows start at 6 (not 8 — that was a bug). Sum the data
   // rows only (6–55) so the bottom TOTAL row at 56 isn't double-counted.
-  ws.getCell("G3").value = { formula: "IFERROR(SUM(G6:G55),0)" };
+  ws.getCell("G3").value = { formula: "IFERROR(SUM(G6:G55),0)", result: 0 };
   ws.getCell("G3").numFmt = ts.numFmtCurrency;
   ws.getCell("G3").font = {
     name: ts.fontName,
@@ -107,7 +107,7 @@ export function buildRestaurantsSheet(
   const totRow = 56;
   ws.getCell(`A${totRow}`).value = "TOTAL";
   const gTot = ws.getCell(`G${totRow}`);
-  gTot.value = { formula: "IFERROR(SUM(G6:G55),0)" };
+  gTot.value = { formula: "IFERROR(SUM(G6:G55),0)", result: 0 };
   gTot.numFmt = ts.numFmtCurrency;
   styleTotalRow(ws.getRow(totRow), ts);
 

@@ -1,1 +1,14 @@
-[["USD-JPY",{"data":{"from":"USD","to":"JPY","rate":161.29,"fetchedAt":"19 Jun 2026"},"expiresAt":1784490114088}]]
+[
+  [
+    "USD-JPY",
+    {
+      "data": {
+        "from": "USD",
+        "to": "JPY",
+        "rate": 161.29,
+        "fetchedAt": "19 Jun 2026"
+      },
+      "expiresAt": 1784490114088
+    }
+  ]
+]

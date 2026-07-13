@@ -5,7 +5,8 @@ import { configureWorkbook, addNamedRanges } from './workbookConfig'
 import { getThemeStyles } from './styleFactory'
 import { injectChart, CHART_PALETTES } from './chartInjection'
 import type { ChartKind } from './chartInjection'
-import { buildOverviewSheet } from './sheets/overview'
+import { injectCalcChain } from './calcChain'
+import { buildOverviewSheet, categoryBudgetAmounts } from './sheets/overview'
 import { buildBudgetTrackerSheet } from './sheets/budgetTracker'
 import { buildItinerarySheet } from './sheets/itinerary'
 import { buildHotelsSheet } from './sheets/hotels'
@@ -61,10 +62,22 @@ export async function generateWorkbook(
     pie: 'pie',
     donut: 'doughnut',
   }
+  // Cached data points for the chart series — must mirror what the referenced cells
+  // hold at generation time (i.e. the cached formula results with empty trackers).
+  // Without these, Excel's chart redraw runs one edit behind the cells.
+  const cats = categoryBudgetAmounts(state)
+
   buffer = await injectChart(buffer, {
     kind: CHART_KIND[state.chartStyle],
     sheetName: 'OVERVIEW',
     categoryRange: "'OVERVIEW'!$F$18:$F$23",
+    categoryLabels: cats.map(c => c.key),
+    // bar: col N = MIN(actual, budget) = 0 with empty trackers.
+    // pie/donut: col M = IF(actual>0, actual, budget) = budget estimate.
+    values: state.chartStyle === 'bar' ? cats.map(() => 0) : cats.map(c => c.amount),
+    // bar only: col O = MAX(budget - actual, 0) = budget; col P = MAX(actual - budget, 0) = 0.
+    remainderValues: state.chartStyle === 'bar' ? cats.map(c => c.amount) : undefined,
+    overValues: state.chartStyle === 'bar' ? cats.map(() => 0) : undefined,
     // bar: col N = MIN(actual, budget) — colored "spent" segment (base of the stacked bar).
     // pie/donut: col M = actual or budget estimate fallback so chart is never empty.
     valueRange: state.chartStyle === 'bar'
@@ -80,6 +93,10 @@ export async function generateWorkbook(
     colors: CHART_PALETTES[state.theme],
     title: `${state.destination || 'Trip'} Budget Breakdown`,
   })
+
+  // ExcelJS also never writes the calcChain part; without it Excel for Mac
+  // repaints the injected chart one calculation behind the cells.
+  buffer = await injectCalcChain(buffer)
 
   return new Blob([buffer], {
     type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',

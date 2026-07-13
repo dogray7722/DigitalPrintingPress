@@ -30,7 +30,7 @@ export function buildFlightsSheet(
   ws.getCell('A3').font = { name: ts.fontName, size: ts.sizes.header, bold: true }
   ws.mergeCells('A3:E3')
   const lastDataRow = 5 + DATA_ROWS
-  ws.getCell('H3').value = { formula: `IFERROR(SUM(H6:H${lastDataRow}),0)` }
+  ws.getCell('H3').value = { formula: `IFERROR(SUM(H6:H${lastDataRow}),0)`, result: 0 }
   ws.getCell('H3').numFmt = ts.numFmtCurrency
   ws.getCell('H3').font = { name: ts.fontName, size: ts.sizes.header, bold: true }
   ws.getRow(3).height = 22
@@ -110,7 +110,7 @@ export function buildFlightsSheet(
   const totRow = lastDataRow + 1
   ws.getCell(`A${totRow}`).value = 'TOTAL'
   const hTot = ws.getCell(`H${totRow}`)
-  hTot.value = { formula: `IFERROR(SUM(H6:H${lastDataRow}),0)` }
+  hTot.value = { formula: `IFERROR(SUM(H6:H${lastDataRow}),0)`, result: 0 }
   hTot.numFmt = ts.numFmtCurrency
   styleTotalRow(ws.getRow(totRow), ts)
 

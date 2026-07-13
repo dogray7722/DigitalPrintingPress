@@ -74,7 +74,12 @@ const KINDS = [
       valueRange: "'OVERVIEW'!$N$18:$N$23",
       remainderRange: "'OVERVIEW'!$O$18:$O$23",
       overRange: "'OVERVIEW'!$P$18:$P$23",
+      // Generation-time values of N/O/P given the base workbook's G/H data above.
+      values: [200, 0, 0, 0, 0, 0],
+      remainderValues: [0, 400, 600, 800, 1000, 1200],
+      overValues: [50, 0, 0, 0, 0, 0],
     },
+    expectedNumCaches: 3,
     // bar has 3 series; dPts only on Series 0 (spent, per-category theme colors)
     expectedDPts: 6,
     valueRangeCheck: "'OVERVIEW'!$N$18:$N$23",
@@ -83,26 +88,35 @@ const KINDS = [
     kind: 'pie',
     element: '<c:pieChart>',
     extra: [],
-    opts: { valueRange: "'OVERVIEW'!$M$18:$M$23" },
+    opts: {
+      valueRange: "'OVERVIEW'!$M$18:$M$23",
+      values: [250, 400, 600, 800, 1000, 1200], // M = IF(H>0,H,G) given the base data
+    },
     expectedDPts: 6,
+    expectedNumCaches: 1,
     valueRangeCheck: "'OVERVIEW'!$M$18:$M$23",
   },
   {
     kind: 'doughnut',
     element: '<c:doughnutChart>',
     extra: ['<c:holeSize val="50"/>'],
-    opts: { valueRange: "'OVERVIEW'!$M$18:$M$23" },
+    opts: {
+      valueRange: "'OVERVIEW'!$M$18:$M$23",
+      values: [250, 400, 600, 800, 1000, 1200],
+    },
     expectedDPts: 6,
+    expectedNumCaches: 1,
     valueRangeCheck: "'OVERVIEW'!$M$18:$M$23",
   },
 ]
 
-for (const { kind, element, extra, opts: kindOpts, expectedDPts, valueRangeCheck } of KINDS) {
+for (const { kind, element, extra, opts: kindOpts, expectedDPts, expectedNumCaches, valueRangeCheck } of KINDS) {
   console.log(`\n── ${kind} ──`)
   const injected = await injectChart(baseBuffer, {
     kind,
     sheetName: 'OVERVIEW',
     categoryRange: "'OVERVIEW'!$F$18:$F$23",
+    categoryLabels: cats,
     anchor: { fromCol: 5, fromRow: 26, toCol: 11, toRow: 44 },
     colors: CHART_COLORS,
     title: 'Test Budget Breakdown',
@@ -130,6 +144,17 @@ for (const { kind, element, extra, opts: kindOpts, expectedDPts, valueRangeCheck
   assert(chart.includes('<c:plotVisOnly val="0"/>'), 'plotVisOnly=0 so hidden helper cols still plot')
   assert((chart.match(/<c:dPt>/g) || []).length === expectedDPts, `chart has ${expectedDPts} colored data points`)
   assert(chart.includes('<a:srgbClr val="4ECDC4"'), 'ARGB alpha stripped to RGB')
+
+  // Cached data points — without them Excel's chart redraw lags one edit behind the
+  // cells. Every strRef/numRef must carry a cache with one <c:pt> per category.
+  assert(chart.includes('<c:strCache><c:ptCount val="6"/>'), 'category strCache present (ptCount 6)')
+  assert(chart.includes('<c:pt idx="0"><c:v>Transportation</c:v></c:pt>'), 'strCache carries category labels')
+  const numCaches = chart.match(/<c:numCache>.*?<\/c:numCache>/g) || []
+  assert(numCaches.length === expectedNumCaches, `chart has ${expectedNumCaches} numCache block(s)`)
+  assert(
+    numCaches.every(nc => nc.includes('<c:ptCount val="6"/>') && (nc.match(/<c:pt idx=/g) || []).length === 6),
+    'every numCache has ptCount 6 and 6 cached points'
+  )
 
   // Find the OVERVIEW sheet part and confirm the <drawing> element + rel wiring.
   const wbXml = await zip.file('xl/workbook.xml').async('string')

@@ -28,7 +28,7 @@ export function buildHotelsSheet(
   ws.getCell('A3').value = 'TOTAL ACCOMMODATION COST'
   ws.getCell('A3').font = { name: ts.fontName, size: ts.sizes.header, bold: true }
   ws.mergeCells('A3:D3')
-  ws.getCell('E3').value = { formula: 'IFERROR(SUM(E6:E25),0)' }
+  ws.getCell('E3').value = { formula: 'IFERROR(SUM(E6:E25),0)', result: 0 }
   ws.getCell('E3').numFmt = ts.numFmtCurrency
   ws.getCell('E3').font = { name: ts.fontName, size: ts.sizes.header, bold: true }
   ws.getRow(3).height = 22
@@ -82,7 +82,7 @@ export function buildHotelsSheet(
   const totRow = 26
   ws.getCell(`A${totRow}`).value = 'TOTAL'
   const eTot = ws.getCell(`E${totRow}`)
-  eTot.value = { formula: 'IFERROR(SUM(E6:E25),0)' }
+  eTot.value = { formula: 'IFERROR(SUM(E6:E25),0)', result: 0 }
   eTot.numFmt = ts.numFmtCurrency
   styleTotalRow(ws.getRow(totRow), ts)
 

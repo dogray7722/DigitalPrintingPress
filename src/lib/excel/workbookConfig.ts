@@ -10,6 +10,14 @@ export function configureWorkbook(
   wb.modified = new Date();
   wb.properties.date1904 = false;
 
+  // NB: fullCalcOnLoad is deliberately NOT set. The full rebuild it forces on
+  // load re-breaks Excel for Mac's chart repaint ordering (bars lag one edit
+  // behind the cells). Instead: every formula cell carries a correct cached
+  // `result:` so it renders on open without a recalc, and injectCalcChain()
+  // (src/lib/excel/calcChain.ts) writes the calcChain part + native calcId so
+  // Excel treats the file like one of its own. Verified by typing tests in
+  // Excel for Mac 16.110 — keep all three pieces in sync.
+
   const dest = state.destination || "My Trip";
   wb.title = `${dest} Travel Planner`;
   wb.subject = "Travel Planning Spreadsheet";

@@ -21,6 +21,7 @@ export function buildPackingListSheet(
   ws.getCell('A2').value = {
     formula:
       'IFERROR("PACKING PROGRESS: "&TEXT(COUNTIF(C5:C500,"✓")/COUNTA(B5:B500),"0%")&" complete","PACKING PROGRESS")',
+    result: 'PACKING PROGRESS: 0% complete',
   }
   ws.mergeCells('A2:E2')
   ws.getCell('A2').font = {

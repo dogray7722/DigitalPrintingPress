@@ -26,21 +26,49 @@ const BUDGET_CATEGORIES = [
   { key: 'Miscellaneous', budget: 'misc', perTrip: false },
 ] as const
 
-// "Actual Spent" for a category = the relevant per-category sheet total (when that
-// sheet is enabled) PLUS any matching rows logged in OTHER EXPENSES. Each term is
-// added only when its source sheet exists, so the formula never references a missing
-// sheet (which would corrupt the workbook). Falls back to 0 when no source applies.
+// Per-category estimated budget amounts, in Budget Summary (F18:F23) row order.
+// Used to seed the table's Estimated Budget column AND the injected chart's cached
+// data points (index.ts) — the two must agree or the chart renders stale numbers.
+export function categoryBudgetAmounts(
+  state: WizardState
+): { key: string; amount: number }[] {
+  return BUDGET_CATEGORIES.map(({ key, budget, perTrip }) => ({
+    key,
+    // Transportation combines the flights lump-sum with the per-day transport budget.
+    amount:
+      key === 'Transportation'
+        ? state.budgets.flights + state.budgets.transport * state.duration
+        : perTrip
+          ? state.budgets[budget as keyof typeof state.budgets]
+          : (state.budgets[budget as keyof typeof state.budgets] as number) * state.duration,
+  }))
+}
+
+// "Actual Spent" for a category = the sum of the relevant tracker sheet's cost DATA
+// ROWS (when that sheet is enabled) PLUS any matching rows logged in OTHER EXPENSES.
+// Each term is added only when its source sheet exists, so the formula never
+// references a missing sheet (which would corrupt the workbook). Falls back to 0
+// when no source applies.
+//
+// IMPORTANT: sum the tracker DATA ROWS directly — do NOT reference the tracker's
+// TOTAL/summary cells (e.g. 'ACCOMMODATION'!$E$26). Both compute the same number,
+// but the intermediate cross-sheet formula hop breaks Excel's (Mac) chart repaint:
+// the OVERVIEW cells recalc correctly, yet the injected chart doesn't redraw until
+// a forced recalc. Direct data-row sums (the Transportation pattern) repaint fine.
+// Ranges must match the data rows written by each tracker builder.
 function buildActualSpentFormula(category: string, state: WizardState): string {
   const terms: string[] = []
 
   if (category === 'Accommodation' && state.sheets.hotels) {
-    terms.push("'ACCOMMODATION'!$E$26")
+    terms.push(`SUM('ACCOMMODATION'!$E$6:$E$25)`)
   }
   if (category === 'Food' && state.sheets.restaurants) {
-    terms.push("'DINING'!$G$3")
+    terms.push(`SUM('DINING'!$G$6:$G$55)`)
   }
   if (category === 'Activities' && state.sheets.excursions) {
-    terms.push("'EXCURSIONS'!$H$36")
+    // EXCURSIONS cost cells are per-row formulas (unit × travelers); summing the H
+    // column keeps typed-over values working. One formula hop remains here by design.
+    terms.push(`SUM('EXCURSIONS'!$H$6:$H$35)`)
   }
   if (category === 'Transportation' && state.sheets.flights) {
     // All transport (air + ground) from the TRANSPORTATION sheet feeds this single category.
@@ -344,15 +372,8 @@ export function buildOverviewSheet(
   styleColumnHeader(colHeaderRow, ts)
 
   let rowIdx = 18
-  BUDGET_CATEGORIES.forEach(({ key, budget, perTrip }, i) => {
+  categoryBudgetAmounts(state).forEach(({ key, amount: budgetAmt }, i) => {
     const bRow = ws.getRow(rowIdx)
-    // Transportation combines the flights lump-sum with the per-day transport budget.
-    const budgetAmt =
-      key === 'Transportation'
-        ? state.budgets.flights + state.budgets.transport * state.duration
-        : perTrip
-          ? state.budgets[budget as keyof typeof state.budgets]
-          : (state.budgets[budget as keyof typeof state.budgets] as number) * state.duration
 
     ws.getCell(`F${rowIdx}`).value = key
 
@@ -363,44 +384,47 @@ export function buildOverviewSheet(
     gCell.value = budgetAmt
     gCell.numFmt = ts.numFmtCurrency
 
-    // Actual spent = per-category sheet totals + matching OTHER EXPENSES entries
+    // Actual spent = per-category sheet totals + matching OTHER EXPENSES entries.
+    // Cached results throughout this table = the empty-tracker evaluation, so cells
+    // render immediately in viewers that don't recalc on open (see countdown note).
     const hCell = ws.getCell(`H${rowIdx}`)
-    hCell.value = { formula: buildActualSpentFormula(key, state) }
+    hCell.value = { formula: buildActualSpentFormula(key, state), result: 0 }
     hCell.numFmt = ts.numFmtCurrency
 
     // Remaining
     const iCell = ws.getCell(`I${rowIdx}`)
-    iCell.value = { formula: `IFERROR(G${rowIdx}-H${rowIdx},G${rowIdx})` }
+    iCell.value = { formula: `IFERROR(G${rowIdx}-H${rowIdx},G${rowIdx})`, result: budgetAmt }
     iCell.numFmt = ts.numFmtCurrency
 
     // % Used
     const jCell = ws.getCell(`J${rowIdx}`)
-    jCell.value = { formula: `IFERROR(H${rowIdx}/G${rowIdx},0)` }
+    jCell.value = { formula: `IFERROR(H${rowIdx}/G${rowIdx},0)`, result: 0 }
     jCell.numFmt = ts.numFmtPercent
 
     // Status
     const kCell = ws.getCell(`K${rowIdx}`)
     kCell.value = {
       formula: `IFERROR(IF(H${rowIdx}>G${rowIdx},"Over budget",IF(H${rowIdx}/G${rowIdx}>0.8,"Near limit","On track")),"On track")`,
+      result: 'On track',
     }
 
     // Col M: pie/donut chart helper — actual spend once logged, else budget estimate so
     // the chart is never empty when the user hasn't entered spending yet.
     const mCell = ws.getCell(`M${rowIdx}`)
-    mCell.value = { formula: `IF(H${rowIdx}>0,H${rowIdx},G${rowIdx})` }
+    mCell.value = { formula: `IF(H${rowIdx}>0,H${rowIdx},G${rowIdx})`, result: budgetAmt }
     mCell.numFmt = ts.numFmtCurrency
 
     // Col N: bar chart helper — MIN(actual, budget), the colored "actual spent" segment
     // (base of the stacked bar).
     const nCell = ws.getCell(`N${rowIdx}`)
-    nCell.value = { formula: `MIN(H${rowIdx},G${rowIdx})` }
+    nCell.value = { formula: `MIN(H${rowIdx},G${rowIdx})`, result: 0 }
     nCell.numFmt = ts.numFmtCurrency
 
     // Col O: bar chart helper — MAX(budget - actual, 0), the light "remaining budget"
     // segment stacked after col N so one bar = full budget (matches the Excel look in
     // Google Sheets, which ignores overlap on clustered charts).
     const oCell = ws.getCell(`O${rowIdx}`)
-    oCell.value = { formula: `MAX(G${rowIdx}-H${rowIdx},0)` }
+    oCell.value = { formula: `MAX(G${rowIdx}-H${rowIdx},0)`, result: budgetAmt }
     oCell.numFmt = ts.numFmtCurrency
 
     // Col P: bar chart helper — MAX(actual - budget, 0), the red "over budget" overage
@@ -408,7 +432,7 @@ export function buildOverviewSheet(
     // exceeds the estimate it extends the bar past the budget length in red, mirroring
     // the "turns red when over budget" preview shown in the wizard's chart picker.
     const pCell = ws.getCell(`P${rowIdx}`)
-    pCell.value = { formula: `MAX(H${rowIdx}-G${rowIdx},0)` }
+    pCell.value = { formula: `MAX(H${rowIdx}-G${rowIdx},0)`, result: 0 }
     pCell.numFmt = ts.numFmtCurrency
 
     styleDataRow(bRow, ts, i % 2 === 0)
@@ -419,13 +443,13 @@ export function buildOverviewSheet(
   const totRow = ws.getRow(rowIdx)
   ws.getCell(`F${rowIdx}`).value = 'TOTAL'
   const gTot = ws.getCell(`G${rowIdx}`)
-  gTot.value = { formula: `SUM(G18:G${rowIdx - 1})` }
+  gTot.value = { formula: `SUM(G18:G${rowIdx - 1})`, result: totalBudget }
   gTot.numFmt = ts.numFmtCurrency
   const hTot = ws.getCell(`H${rowIdx}`)
-  hTot.value = { formula: `SUM(H18:H${rowIdx - 1})` }
+  hTot.value = { formula: `SUM(H18:H${rowIdx - 1})`, result: 0 }
   hTot.numFmt = ts.numFmtCurrency
   const iTot = ws.getCell(`I${rowIdx}`)
-  iTot.value = { formula: `SUM(I18:I${rowIdx - 1})` }
+  iTot.value = { formula: `SUM(I18:I${rowIdx - 1})`, result: totalBudget }
   iTot.numFmt = ts.numFmtCurrency
   styleTotalRow(totRow, ts)
   rowIdx++
