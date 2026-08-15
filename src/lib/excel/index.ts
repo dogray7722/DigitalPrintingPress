@@ -6,6 +6,7 @@ import { getThemeStyles } from './styleFactory'
 import { injectChart, CHART_PALETTES } from './chartInjection'
 import type { ChartKind } from './chartInjection'
 import { injectCalcChain } from './calcChain'
+import { protectWorkbook } from './protection'
 import { buildOverviewSheet, categoryBudgetAmounts } from './sheets/overview'
 import { buildBudgetTrackerSheet } from './sheets/budgetTracker'
 import { buildItinerarySheet } from './sheets/itinerary'
@@ -51,6 +52,10 @@ export async function generateWorkbook(
 
   // INSTRUCTIONS is always last
   buildInstructionsSheet(wb, state, ts)
+
+  // Lock formula/total cells and hide their formulas; must run before writeBuffer()
+  // since protection is an in-memory worksheet property, not a buffer post-process.
+  await protectWorkbook(wb)
 
   let buffer: ArrayBuffer = (await wb.xlsx.writeBuffer()) as ArrayBuffer
 

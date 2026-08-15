@@ -37,6 +37,7 @@ export const CURRENCIES: Currency[] = [
   { code: 'PLN', name: 'Polish Zloty', symbol: 'zł', flag: '🇵🇱', decimals: 2 },
   { code: 'CZK', name: 'Czech Koruna', symbol: 'Kč', flag: '🇨🇿', decimals: 2 },
   { code: 'HUF', name: 'Hungarian Forint', symbol: 'Ft', flag: '🇭🇺', decimals: 0 },
+  { code: 'CRC', name: 'Costa Rican Colón', symbol: '₡', flag: '🇨🇷', decimals: 2 },
 ]
 
 export const CURRENCY_MAP: Record<string, Currency> = Object.fromEntries(

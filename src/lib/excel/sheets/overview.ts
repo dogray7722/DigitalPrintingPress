@@ -129,6 +129,7 @@ function buildCurrencyWidget(
   fromDrop.font = { name: ts.fontName, size: ts.sizes.header, bold: true, color: { argb: ts.palette.secondaryText } }
   fromDrop.alignment = { vertical: 'middle', horizontal: 'center' }
   fromDrop.border = { bottom: thin(bc) }
+  fromDrop.protection = { locked: false }
   dv.dataValidations.add(`A${r1}`, {
     type: 'list', allowBlank: false, formulae: [`"${from},${to}"`], showErrorMessage: false,
   } as ExcelJS.DataValidation)
@@ -139,6 +140,7 @@ function buildCurrencyWidget(
   oppCell.font = { name: ts.fontName, size: ts.sizes.header, bold: true, color: { argb: ts.palette.secondaryText } }
   oppCell.alignment = { vertical: 'middle', horizontal: 'center' }
   oppCell.border = { bottom: thin(bc) }
+  oppCell.protection = { hidden: true }
 
   // ── Rate row: static "1 FROM =" label (A:C) + user-editable rate number (D) ──
   // D{r2} is the canonical from→to rate. Edit it directly in the sheet to
@@ -162,6 +164,7 @@ function buildCurrencyWidget(
   rateCell.fill = solid(ts.palette.mediumBg)
   rateCell.font = { name: ts.fontName, size: ts.sizes.sectionHeader, bold: true, color: { argb: ts.palette.secondaryText } }
   rateCell.alignment = { vertical: 'middle', horizontal: 'left' }
+  rateCell.protection = { locked: false }
 
   // ── Timestamp ─────────────────────────────────────────────────────────────────
   ws.mergeCells(`A${r3}:D${r3}`)
@@ -180,12 +183,14 @@ function buildCurrencyWidget(
   inputLbl.fill = solid(ts.palette.lightBg)
   inputLbl.font = { name: ts.fontName, size: ts.sizes.data, bold: true, color: { argb: ts.palette.secondaryText } }
   inputLbl.alignment = { vertical: 'middle', horizontal: 'right' }
+  inputLbl.protection = { hidden: true }
 
   const inputSym = ws.getCell(`C${r4}`)
   inputSym.value = { formula: `IF(A${r1}="${from}","${fromSym}","${toSym}")`, result: fromSym }
   inputSym.fill = solid(ts.palette.lightBg)
   inputSym.font = { name: ts.fontName, size: ts.sizes.data, bold: true, color: { argb: ts.palette.secondaryText } }
   inputSym.alignment = { vertical: 'middle', horizontal: 'right' }
+  inputSym.protection = { hidden: true }
 
   const inputCell = ws.getCell(`D${r4}`)
   inputCell.numFmt = fromNumFmt
@@ -193,6 +198,7 @@ function buildCurrencyWidget(
   inputCell.font = { name: ts.fontName, size: ts.sizes.data }
   inputCell.alignment = { vertical: 'middle', horizontal: 'left' }
   inputCell.border = { bottom: thin(bc) }
+  inputCell.protection = { locked: false }
 
   // ── Result row: label (A:B) | live symbol (C) | converted amount (D) ─────────
   // C{r5} mirrors the LEFT dropdown so the symbol flips with the direction.
@@ -203,12 +209,14 @@ function buildCurrencyWidget(
   resultLbl.fill = solid(ts.palette.mediumBg)
   resultLbl.font = { name: ts.fontName, size: ts.sizes.data, bold: true, color: { argb: ts.palette.secondaryText } }
   resultLbl.alignment = { vertical: 'middle', horizontal: 'right' }
+  resultLbl.protection = { hidden: true }
 
   const resultSym = ws.getCell(`C${r5}`)
   resultSym.value = { formula: `IF(A${r1}="${from}","${toSym}","${fromSym}")`, result: toSym }
   resultSym.fill = solid(ts.palette.mediumBg)
   resultSym.font = { name: ts.fontName, size: ts.sizes.data, bold: true, color: { argb: ts.palette.secondaryText } }
   resultSym.alignment = { vertical: 'middle', horizontal: 'right' }
+  resultSym.protection = { hidden: true }
 
   const resultCell = ws.getCell(`D${r5}`)
   resultCell.value = {
@@ -219,6 +227,7 @@ function buildCurrencyWidget(
   resultCell.fill = solid(ts.palette.mediumBg)
   resultCell.font = { name: ts.fontName, size: ts.sizes.data, bold: true, color: { argb: ts.palette.secondaryText } }
   resultCell.alignment = { vertical: 'middle', horizontal: 'left' }
+  resultCell.protection = { hidden: true }
 }
 
 export function buildOverviewSheet(
@@ -275,16 +284,18 @@ export function buildOverviewSheet(
     styleLabelCell(labelCell, ts)
   })
 
-  // D3 = TripStart (named range anchor)
+  // D3 = TripStart (named range anchor) — user-editable
   const d3 = ws.getCell('D3')
   d3.value = startDate
   d3.numFmt = ts.numFmtDate
+  d3.protection = { locked: false }
   styleValueCell(d3, ts)
 
-  // D4 = TripEnd (named range anchor)
+  // D4 = TripEnd (named range anchor) — user-editable
   const d4 = ws.getCell('D4')
   d4.value = endDate
   d4.numFmt = ts.numFmtDate
+  d4.protection = { locked: false }
   styleValueCell(d4, ts)
 
   const d5 = ws.getCell('D5')
@@ -292,6 +303,7 @@ export function buildOverviewSheet(
     formula: 'IFERROR(INT(D4-D3+1)&" days","")',
     result: `${state.duration} days`,
   }
+  d5.protection = { hidden: true }
   styleValueCell(d5, ts)
 
   // Countdown — precompute a cached result so the cell renders immediately on open.
@@ -314,15 +326,17 @@ export function buildOverviewSheet(
       'IFERROR(IF(TripStart=TODAY(),"Today!",IF(TripStart>TODAY(),INT(TripStart-TODAY())&" days to go",INT(TODAY()-TripStart)&" days ago")),"—")',
     result: daysResult,
   }
+  d6.protection = { hidden: true }
   styleValueCell(d6, ts)
 
   const d8 = ws.getCell('D8')
   d8.value = state.partyType.charAt(0).toUpperCase() + state.partyType.slice(1)
   styleValueCell(d8, ts)
 
-  // D9 = NumAdults (named range anchor)
+  // D9 = NumAdults (named range anchor) — user-editable
   const d9 = ws.getCell('D9')
   d9.value = state.partySize
+  d9.protection = { locked: false }
   styleValueCell(d9, ts)
 
   // Currency — informational label (chosen in the wizard), now a dropdown so the
@@ -332,6 +346,7 @@ export function buildOverviewSheet(
   // numFmt elsewhere (those are static, baked in at generation time).
   const d11 = ws.getCell('D11')
   d11.value = `${state.currency} (${currSym})`
+  d11.protection = { locked: false }
   styleValueCell(d11, ts)
 
   CURRENCIES.forEach((c, i) => {
@@ -350,6 +365,7 @@ export function buildOverviewSheet(
   const d14 = ws.getCell('D14')
   d14.value = { formula: 'SUM(G18:G23)', result: totalBudget }
   d14.numFmt = ts.numFmtCurrency
+  d14.protection = { hidden: true }
   d14.font = { name: ts.fontName, size: ts.sizes.header, bold: true }
   d14.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: ts.palette.mediumBg } } as ExcelJS.Fill
 
@@ -383,6 +399,7 @@ export function buildOverviewSheet(
     const gCell = ws.getCell(`G${rowIdx}`)
     gCell.value = budgetAmt
     gCell.numFmt = ts.numFmtCurrency
+    gCell.protection = { locked: false }
 
     // Actual spent = per-category sheet totals + matching OTHER EXPENSES entries.
     // Cached results throughout this table = the empty-tracker evaluation, so cells
@@ -390,16 +407,19 @@ export function buildOverviewSheet(
     const hCell = ws.getCell(`H${rowIdx}`)
     hCell.value = { formula: buildActualSpentFormula(key, state), result: 0 }
     hCell.numFmt = ts.numFmtCurrency
+    hCell.protection = { hidden: true }
 
     // Remaining
     const iCell = ws.getCell(`I${rowIdx}`)
     iCell.value = { formula: `IFERROR(G${rowIdx}-H${rowIdx},G${rowIdx})`, result: budgetAmt }
     iCell.numFmt = ts.numFmtCurrency
+    iCell.protection = { hidden: true }
 
     // % Used
     const jCell = ws.getCell(`J${rowIdx}`)
     jCell.value = { formula: `IFERROR(H${rowIdx}/G${rowIdx},0)`, result: 0 }
     jCell.numFmt = ts.numFmtPercent
+    jCell.protection = { hidden: true }
 
     // Status
     const kCell = ws.getCell(`K${rowIdx}`)
@@ -407,18 +427,21 @@ export function buildOverviewSheet(
       formula: `IFERROR(IF(H${rowIdx}>G${rowIdx},"Over budget",IF(H${rowIdx}/G${rowIdx}>0.8,"Near limit","On track")),"On track")`,
       result: 'On track',
     }
+    kCell.protection = { hidden: true }
 
     // Col M: pie/donut chart helper — actual spend once logged, else budget estimate so
     // the chart is never empty when the user hasn't entered spending yet.
     const mCell = ws.getCell(`M${rowIdx}`)
     mCell.value = { formula: `IF(H${rowIdx}>0,H${rowIdx},G${rowIdx})`, result: budgetAmt }
     mCell.numFmt = ts.numFmtCurrency
+    mCell.protection = { hidden: true }
 
     // Col N: bar chart helper — MIN(actual, budget), the colored "actual spent" segment
     // (base of the stacked bar).
     const nCell = ws.getCell(`N${rowIdx}`)
     nCell.value = { formula: `MIN(H${rowIdx},G${rowIdx})`, result: 0 }
     nCell.numFmt = ts.numFmtCurrency
+    nCell.protection = { hidden: true }
 
     // Col O: bar chart helper — MAX(budget - actual, 0), the light "remaining budget"
     // segment stacked after col N so one bar = full budget (matches the Excel look in
@@ -426,6 +449,7 @@ export function buildOverviewSheet(
     const oCell = ws.getCell(`O${rowIdx}`)
     oCell.value = { formula: `MAX(G${rowIdx}-H${rowIdx},0)`, result: budgetAmt }
     oCell.numFmt = ts.numFmtCurrency
+    oCell.protection = { hidden: true }
 
     // Col P: bar chart helper — MAX(actual - budget, 0), the red "over budget" overage
     // segment stacked after col O. Zero (invisible) when on/under budget; when spending
@@ -434,6 +458,7 @@ export function buildOverviewSheet(
     const pCell = ws.getCell(`P${rowIdx}`)
     pCell.value = { formula: `MAX(H${rowIdx}-G${rowIdx},0)`, result: 0 }
     pCell.numFmt = ts.numFmtCurrency
+    pCell.protection = { hidden: true }
 
     styleDataRow(bRow, ts, i % 2 === 0)
     rowIdx++
@@ -445,12 +470,15 @@ export function buildOverviewSheet(
   const gTot = ws.getCell(`G${rowIdx}`)
   gTot.value = { formula: `SUM(G18:G${rowIdx - 1})`, result: totalBudget }
   gTot.numFmt = ts.numFmtCurrency
+  gTot.protection = { hidden: true }
   const hTot = ws.getCell(`H${rowIdx}`)
   hTot.value = { formula: `SUM(H18:H${rowIdx - 1})`, result: 0 }
   hTot.numFmt = ts.numFmtCurrency
+  hTot.protection = { hidden: true }
   const iTot = ws.getCell(`I${rowIdx}`)
   iTot.value = { formula: `SUM(I18:I${rowIdx - 1})`, result: totalBudget }
   iTot.numFmt = ts.numFmtCurrency
+  iTot.protection = { hidden: true }
   styleTotalRow(totRow, ts)
   rowIdx++
 

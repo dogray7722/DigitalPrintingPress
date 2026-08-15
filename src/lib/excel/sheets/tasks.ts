@@ -51,6 +51,7 @@ export function buildTasksSheet(
       'IFERROR("TASK PROGRESS: "&TEXT(COUNTIF(D5:D500,"✓")/COUNTA(B5:B500),"0%")&" complete","TASK PROGRESS")',
     result: 'TASK PROGRESS: 0% complete',
   }
+  ws.getCell('A2').protection = { hidden: true }
   ws.mergeCells('A2:F2')
   ws.getCell('A2').font = {
     name: ts.fontName,
@@ -96,6 +97,11 @@ export function buildTasksSheet(
     ws.getCell(`E${rowNum}`).value = task.priority
     ws.getCell(`F${rowNum}`).value = ''
 
+    // Done?, Priority, Due/Notes are user-entered; Task/Category stay locked (template content).
+    ws.getCell(`D${rowNum}`).protection = { locked: false }
+    ws.getCell(`E${rowNum}`).protection = { locked: false }
+    ws.getCell(`F${rowNum}`).protection = { locked: false }
+
     styleDataRow(row, ts, i % 2 === 0)
     row.height = 18
     rowNum++
@@ -115,6 +121,10 @@ export function buildTasksSheet(
     const r = rowNum + 2 + extra
     const row = ws.getRow(r)
     ws.getCell(`A${r}`).value = DEFAULT_TASKS.length + extra + 1
+    // Blank rows for the buyer's own tasks — user-entered except the auto-numbered index.
+    for (const col of ['B', 'C', 'D', 'E', 'F']) {
+      ws.getCell(`${col}${r}`).protection = { locked: false }
+    }
     styleDataRow(row, ts, extra % 2 === 0)
     row.height = 18
   }

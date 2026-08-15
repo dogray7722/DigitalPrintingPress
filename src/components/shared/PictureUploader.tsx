@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react'
-import { ImagePlus, Loader2, AlertCircle, Trash2 } from 'lucide-react'
+import { ImagePlus, Loader2, AlertCircle, Trash2, ChevronUp, ChevronDown } from 'lucide-react'
 import { cn } from '../../lib/utils'
 import type { OverviewImage } from '../../types/wizard'
 
@@ -13,7 +13,9 @@ const ACCEPTED_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif']
 // Target matches the OVERVIEW sheet's F3:K14 image anchor (~693x320px, ~2.16:1).
 const TARGET_W = 1400
 const TARGET_H = 648
+const TARGET_RATIO = TARGET_W / TARGET_H
 const JPEG_QUALITY = 0.85
+const NUDGE_STEP = 0.1
 
 function readFileAsDataURL(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -33,14 +35,16 @@ function loadImage(src: string): Promise<HTMLImageElement> {
   })
 }
 
-// Center-crops the source image to the F3:K14 target aspect ratio, downscales to
-// TARGET_W x TARGET_H, and re-encodes as JPEG so the embedded file stays small and
-// never gets stretched/distorted by ExcelJS's cell-range image anchor.
-async function cropAndResize(file: File): Promise<string> {
-  const dataUrl = await readFileAsDataURL(file)
-  const img = await loadImage(dataUrl)
+// The crop only has vertical slack to nudge within when the source is taller than the
+// target ratio (it's the axis trimmed to fit); wider sources trim left/right instead.
+function hasVerticalSlack(srcW: number, srcH: number): boolean {
+  return srcW / srcH < TARGET_RATIO
+}
 
-  const targetRatio = TARGET_W / TARGET_H
+// Crops the source image to the F3:K14 target aspect ratio at the given vertical focal
+// point, downscales to TARGET_W x TARGET_H, and re-encodes as JPEG so the embedded file
+// stays small and never gets stretched/distorted by ExcelJS's cell-range image anchor.
+function drawCrop(img: HTMLImageElement, offsetY: number): string {
   const srcW = img.naturalWidth
   const srcH = img.naturalHeight
   const srcRatio = srcW / srcH
@@ -49,12 +53,12 @@ async function cropAndResize(file: File): Promise<string> {
   let sy = 0
   let sw = srcW
   let sh = srcH
-  if (srcRatio > targetRatio) {
-    sw = Math.round(srcH * targetRatio)
+  if (srcRatio > TARGET_RATIO) {
+    sw = Math.round(srcH * TARGET_RATIO)
     sx = Math.round((srcW - sw) / 2)
-  } else if (srcRatio < targetRatio) {
-    sh = Math.round(srcW / targetRatio)
-    sy = Math.round((srcH - sh) / 2)
+  } else if (srcRatio < TARGET_RATIO) {
+    sh = Math.round(srcW / TARGET_RATIO)
+    sy = Math.round((srcH - sh) * offsetY)
   }
 
   const canvas = document.createElement('canvas')
@@ -76,6 +80,15 @@ export function PictureUploader({ value, onChange }: Props) {
   const [isDragging, setIsDragging] = useState(false)
   const [isProcessing, setIsProcessing] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // Caches the decoded source image so nudges don't need to re-read/re-decode the data URL.
+  const sourceImgRef = useRef<{ src: string; img: HTMLImageElement } | null>(null)
+
+  async function getSourceImg(sourceDataUrl: string): Promise<HTMLImageElement> {
+    if (sourceImgRef.current?.src !== sourceDataUrl) {
+      sourceImgRef.current = { src: sourceDataUrl, img: await loadImage(sourceDataUrl) }
+    }
+    return sourceImgRef.current.img
+  }
 
   async function processFile(file: File) {
     setError(null)
@@ -89,13 +102,33 @@ export function PictureUploader({ value, onChange }: Props) {
     }
     setIsProcessing(true)
     try {
-      const dataUrl = await cropAndResize(file)
-      onChange({ dataUrl })
+      const sourceDataUrl = await readFileAsDataURL(file)
+      const img = await loadImage(sourceDataUrl)
+      sourceImgRef.current = { src: sourceDataUrl, img }
+      const offsetY = 0.5
+      const dataUrl = drawCrop(img, offsetY)
+      onChange({
+        dataUrl,
+        sourceDataUrl,
+        sourceWidth: img.naturalWidth,
+        sourceHeight: img.naturalHeight,
+        offsetY,
+      })
     } catch {
       setError('Could not process this image. Please try a different file.')
     } finally {
       setIsProcessing(false)
     }
+  }
+
+  async function handleNudge(direction: 'up' | 'down') {
+    if (!value) return
+    const delta = direction === 'up' ? -NUDGE_STEP : NUDGE_STEP
+    const offsetY = Math.min(1, Math.max(0, value.offsetY + delta))
+    if (offsetY === value.offsetY) return
+    const img = await getSourceImg(value.sourceDataUrl)
+    const dataUrl = drawCrop(img, offsetY)
+    onChange({ ...value, offsetY, dataUrl })
   }
 
   function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
@@ -112,6 +145,7 @@ export function PictureUploader({ value, onChange }: Props) {
   }
 
   if (value) {
+    const canReposition = hasVerticalSlack(value.sourceWidth, value.sourceHeight)
     return (
       <div className="relative">
         <img
@@ -127,8 +161,31 @@ export function PictureUploader({ value, onChange }: Props) {
         >
           <Trash2 size={15} />
         </button>
+        {canReposition && (
+          <div className="absolute bottom-2 right-2 flex flex-col rounded-full bg-white/90 shadow-sm overflow-hidden">
+            <button
+              type="button"
+              onClick={() => handleNudge('up')}
+              disabled={value.offsetY <= 0}
+              className="p-1.5 hover:bg-indigo-50 hover:text-indigo-500 transition-colors disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-current"
+              aria-label="Show more of the top of the photo"
+            >
+              <ChevronUp size={15} />
+            </button>
+            <button
+              type="button"
+              onClick={() => handleNudge('down')}
+              disabled={value.offsetY >= 1}
+              className="p-1.5 hover:bg-indigo-50 hover:text-indigo-500 transition-colors disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-current"
+              aria-label="Show more of the bottom of the photo"
+            >
+              <ChevronDown size={15} />
+            </button>
+          </div>
+        )}
         <p className="mt-1.5 text-xs text-gray-400">
           This image will appear at the top of the OVERVIEW sheet.
+          {canReposition && ' Use the arrows to reposition it.'}
         </p>
       </div>
     )

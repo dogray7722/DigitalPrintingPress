@@ -47,6 +47,7 @@ export function buildRestaurantsSheet(
     size: ts.sizes.header,
     bold: true
   };
+  ws.getCell("G3").protection = { hidden: true };
   ws.getRow(3).height = 22;
 
   // Column order: Date | Venue Name | Address/Location | Meal Type | Cuisine | Rating | Cost | Notes
@@ -96,6 +97,11 @@ export function buildRestaurantsSheet(
     ws.getCell(`A${rowNum}`).numFmt = ts.numFmtDate;
     ws.getCell(`G${rowNum}`).numFmt = ts.numFmtCurrency;
 
+    // Every column in this row is user-entered — unlock the whole row.
+    for (const col of ["A", "B", "C", "D", "E", "F", "G", "H"]) {
+      ws.getCell(`${col}${rowNum}`).protection = { locked: false };
+    }
+
     styleDataRow(row, ts, i % 2 === 0);
     // Cost (G) is user-entered, so it's empty in the template — stripe it explicitly
     // so the column matches the populated columns (styleDataRow skips empty cells).
@@ -109,6 +115,7 @@ export function buildRestaurantsSheet(
   const gTot = ws.getCell(`G${totRow}`);
   gTot.value = { formula: "IFERROR(SUM(G6:G55),0)", result: 0 };
   gTot.numFmt = ts.numFmtCurrency;
+  gTot.protection = { hidden: true };
   styleTotalRow(ws.getRow(totRow), ts);
 
   ws.getColumn("A").width = 14;

@@ -33,6 +33,7 @@ export function buildFlightsSheet(
   ws.getCell('H3').value = { formula: `IFERROR(SUM(H6:H${lastDataRow}),0)`, result: 0 }
   ws.getCell('H3').numFmt = ts.numFmtCurrency
   ws.getCell('H3').font = { name: ts.fontName, size: ts.sizes.header, bold: true }
+  ws.getCell('H3').protection = { hidden: true }
   ws.getRow(3).height = 22
 
   ws.getRow(4).height = 4
@@ -100,6 +101,11 @@ export function buildFlightsSheet(
     ws.getCell(`G${rowNum}`).numFmt = 'h:mm AM/PM'
     ws.getCell(`H${rowNum}`).numFmt = ts.numFmtCurrency
 
+    // Every column in this row is user-entered — unlock the whole row.
+    for (const col of ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K']) {
+      ws.getCell(`${col}${rowNum}`).protection = { locked: false }
+    }
+
     styleDataRow(row, ts, i % 2 === 0)
     // Cost (H) is user-entered, so it's empty in the template — stripe it explicitly
     // so the column matches the populated columns (styleDataRow skips empty cells).
@@ -112,6 +118,7 @@ export function buildFlightsSheet(
   const hTot = ws.getCell(`H${totRow}`)
   hTot.value = { formula: `IFERROR(SUM(H6:H${lastDataRow}),0)`, result: 0 }
   hTot.numFmt = ts.numFmtCurrency
+  hTot.protection = { hidden: true }
   styleTotalRow(ws.getRow(totRow), ts)
 
   ws.getColumn('A').width = 16

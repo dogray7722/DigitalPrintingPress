@@ -23,6 +23,7 @@ export function buildPackingListSheet(
       'IFERROR("PACKING PROGRESS: "&TEXT(COUNTIF(C5:C500,"✓")/COUNTA(B5:B500),"0%")&" complete","PACKING PROGRESS")',
     result: 'PACKING PROGRESS: 0% complete',
   }
+  ws.getCell('A2').protection = { hidden: true }
   ws.mergeCells('A2:E2')
   ws.getCell('A2').font = {
     name: ts.fontName,
@@ -86,6 +87,11 @@ export function buildPackingListSheet(
     ws.getCell(`D${rowNum}`).value = 1
     ws.getCell(`E${rowNum}`).value = ''
 
+    // Packed?, Quantity, Notes are user-entered; Item name stays locked (template content).
+    ws.getCell(`C${rowNum}`).protection = { locked: false }
+    ws.getCell(`D${rowNum}`).protection = { locked: false }
+    ws.getCell(`E${rowNum}`).protection = { locked: false }
+
     styleDataRow(row, ts, dataRowIdx % 2 === 0)
     row.height = 18
     rowNum++
@@ -107,6 +113,10 @@ export function buildPackingListSheet(
     const r = rowNum + 2 + extra
     const row = ws.getRow(r)
     ws.getCell(`D${r}`).value = 1
+    // Blank rows for the buyer's own items — the whole row is user-entered.
+    for (const col of ['A', 'B', 'C', 'D', 'E']) {
+      ws.getCell(`${col}${r}`).protection = { locked: false }
+    }
     styleDataRow(row, ts, extra % 2 === 0)
     row.height = 18
   }

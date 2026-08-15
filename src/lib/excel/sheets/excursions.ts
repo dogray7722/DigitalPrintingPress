@@ -29,6 +29,7 @@ export function buildExcursionsSheet(
   ws.getCell('H3').value = { formula: 'IFERROR(SUM(H6:H35),0)', result: 0 }
   ws.getCell('H3').numFmt = ts.numFmtCurrency
   ws.getCell('H3').font = { name: ts.fontName, size: ts.sizes.header, bold: true }
+  ws.getCell('H3').protection = { hidden: true }
   ws.getRow(3).height = 22
 
   // Column headers — A:Date B:Excursion C:Duration D:Type E:CostType F:Cost G:#Travelers H:Total I:Participants J:Notes
@@ -92,6 +93,12 @@ export function buildExcursionsSheet(
     const hCell = ws.getCell(`H${rowNum}`)
     hCell.value = { formula: `IFERROR(IF(E${rowNum}="Per Person",F${rowNum}*G${rowNum},F${rowNum}),"")`, result: '' }
     hCell.numFmt = ts.numFmtCurrency
+    hCell.protection = { hidden: true }
+
+    // Columns A–G are user-entered; H is the formula above and stays locked.
+    for (const col of ['A', 'B', 'C', 'D', 'E', 'F', 'G']) {
+      ws.getCell(`${col}${rowNum}`).protection = { locked: false }
+    }
 
     styleDataRow(row, ts, i % 2 === 0)
     row.height = 20
@@ -102,6 +109,7 @@ export function buildExcursionsSheet(
   const hTot = ws.getCell(`H${totRow}`)
   hTot.value = { formula: 'IFERROR(SUM(H6:H35),0)', result: 0 }
   hTot.numFmt = ts.numFmtCurrency
+  hTot.protection = { hidden: true }
   styleTotalRow(ws.getRow(totRow), ts)
 
   ws.getColumn('A').width = 14

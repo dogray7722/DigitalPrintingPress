@@ -1,14 +1,1 @@
-[
-  [
-    "USD-JPY",
-    {
-      "data": {
-        "from": "USD",
-        "to": "JPY",
-        "rate": 161.29,
-        "fetchedAt": "19 Jun 2026"
-      },
-      "expiresAt": 1784490114088
-    }
-  ]
-]
+[["USD-JPY",{"data":{"from":"USD","to":"JPY","rate":161.29,"fetchedAt":"19 Jun 2026"},"expiresAt":1784490114088}],["USD-EUR",{"data":{"from":"USD","to":"EUR","rate":0.8741,"fetchedAt":"18 Jul 2026"},"expiresAt":1786996804199}],["USD-GBP",{"data":{"from":"USD","to":"GBP","rate":0.7444,"fetchedAt":"20 Jul 2026"},"expiresAt":1787174774710}],["USD-CAD",{"data":{"from":"USD","to":"CAD","rate":1.40593,"fetchedAt":"21 Jul 2026"},"expiresAt":1787260359869}],["USD-CRC",{"data":{"from":"USD","to":"CRC","rate":453.94,"fetchedAt":"21 Jul 2026"},"expiresAt":1787269567371}],["USD-MXN",{"data":{"from":"USD","to":"MXN","rate":17.4,"fetchedAt":"22 Jul 2026"},"expiresAt":1787340140101}]]

@@ -108,7 +108,7 @@ The generated `.xlsx` must open correctly in **both Excel and Google Sheets**. T
 - **No macros/VBA** — `.xlsx` can't carry them; any dynamic behavior must be static formulas or data validation
 - **No row hiding driven by cell/dropdown** — needs VBA (Excel) or Apps Script (Sheets); outline groups are OK (manual [+]/[−])
 - **No currency-symbol-from-dropdown** — `numFmt` strings are static; can't reference a cell value
-- **No cell/sheet protection** — ExcelJS `cell.protection`/`worksheet.protect()` is honored by Excel but ignored by Google Sheets on upload
+- **Cell/sheet protection is Excel-only** — every generated sheet except INSTRUCTIONS and ANNUAL EVENTS is locked via `protectWorkbook()` (`src/lib/excel/protection.ts`, called in `index.ts` right before `writeBuffer()`). Each sheet builder marks its own data-entry cells `protection: { locked: false }` and its formula/total cells `protection: { hidden: true }` at the point those cells are written. No password — this is a guardrail against accidentally overwriting a formula, not real security. Google Sheets ignores `sheetProtection`/`cell.protection` on upload, so every cell becomes editable again there; don't imply otherwise in copy or INSTRUCTIONS text
 - **The OVERVIEW D11 currency dropdown** is cosmetic/reference-only (a `type:'list'` data validation of 30 currencies); it does NOT drive `numFmt`. Options written to hidden helper column R (inline list would exceed Excel's 255-char limit). This is acceptable because it doesn't imply false interactivity.
 
 Before proposing any in-spreadsheet interactivity, verify it works statically in Google Sheets. If a control can't actually do what it implies, say so and offer honest alternatives.

@@ -27,8 +27,14 @@ export interface BudgetAmounts {
 }
 
 export interface OverviewImage {
-  /** data URL, e.g. "data:image/jpeg;base64,...." — already center-cropped/resized to ~1400x648 JPEG client-side. */
+  /** Final baked crop, ready for Excel embed — 1400x648 JPEG data URL. */
   dataUrl: string
+  /** Original uploaded image (untouched), used to recompute the crop on reposition. */
+  sourceDataUrl: string
+  sourceWidth: number
+  sourceHeight: number
+  /** 0-1 vertical focal point within the available crop slack; 0.5 = center (default). 0 = top of source visible, 1 = bottom of source visible. Only meaningful when the source is taller than the 2.16:1 target ratio. */
+  offsetY: number
 }
 
 export const ALL_SHEET_IDS: SheetId[] = [

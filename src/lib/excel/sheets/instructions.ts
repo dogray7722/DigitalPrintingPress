@@ -120,6 +120,10 @@ export function buildInstructionsSheet(
     `This spreadsheet was created for your trip. It works in both Microsoft Excel and Google Sheets.`
   );
   row++;
+  bulletLine(
+    "Formula and total cells are locked and hidden so you can't accidentally type over them — you can still edit every date, description, and cost field. This is an Excel feature only; if you upload this file to Google Sheets, all cells become editable again."
+  );
+  row++;
   bodyLine(
     "Key settings live on the OVERVIEW sheet and can be changed at any time:"
   );

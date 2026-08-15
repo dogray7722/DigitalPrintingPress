@@ -31,6 +31,7 @@ export function buildHotelsSheet(
   ws.getCell('E3').value = { formula: 'IFERROR(SUM(E6:E25),0)', result: 0 }
   ws.getCell('E3').numFmt = ts.numFmtCurrency
   ws.getCell('E3').font = { name: ts.fontName, size: ts.sizes.header, bold: true }
+  ws.getCell('E3').protection = { hidden: true }
   ws.getRow(3).height = 22
 
   // Column headers
@@ -71,8 +72,10 @@ export function buildHotelsSheet(
 
     // Per the request, only the Cost column is striped — give the rest of the row a
     // plain (white) background, then override the Cost cell with the alternating stripe.
+    // All columns in this row are user-entered — unlock them too.
     for (const col of ['A', 'B', 'C', 'D', 'E', 'F', 'G']) {
       styleDataCell(ws.getCell(`${col}${rowNum}`), ts, false)
+      ws.getCell(`${col}${rowNum}`).protection = { locked: false }
     }
     styleDataCell(ws.getCell(`E${rowNum}`), ts, i % 2 === 0)
     row.height = 20
@@ -84,6 +87,7 @@ export function buildHotelsSheet(
   const eTot = ws.getCell(`E${totRow}`)
   eTot.value = { formula: 'IFERROR(SUM(E6:E25),0)', result: 0 }
   eTot.numFmt = ts.numFmtCurrency
+  eTot.protection = { hidden: true }
   styleTotalRow(ws.getRow(totRow), ts)
 
   ws.getColumn('A').width = 16
