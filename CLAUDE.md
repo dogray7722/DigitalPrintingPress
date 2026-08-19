@@ -40,7 +40,7 @@ All sheet builders are in `src/lib/excel/sheets/`. The entry point is `src/lib/e
 
 | #   | Sheet          | Always on | Notes                                                                                                                                            |
 | --- | -------------- | --------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
-| 1   | OVERVIEW       | ✓         | Named ranges: TripStart D3, TripEnd D4, NumAdults D9, TotalBudget D14; native DrawingML chart (bar/pie/donut) injected via JSZip post-processing |
+| 1   | OVERVIEW       | ✓         | Named ranges: TripStart A5, TripEnd B5, NumAdults C7, TotalBudget D15; rows 1–14 are a dashboard "hero band" (dark A:D text panel + F1:K14 cover photo, no gridlines/freeze — see below) instead of a title bar + label/value ledger; native DrawingML chart(s) injected via JSZip post-processing; trip-readiness doughnut ring (A24:E40) with a centered `S1/S3` "% ready" label floated over its transparent hole, quick-nav HYPERLINK strip (A42+, each link prefixed with its `SHEET_ICONS` emoji — the same map the Step 3 toggle grid uses, exported from `src/types/wizard.ts`), neighborhood guide from AI regions (F46+, when recs enabled). Exactly one image (the cover photo) — a second upload + multi-image strip was tried and removed: it served no purpose and arbitrary source dimensions made the results unpredictable |
 | 2   | ITINERARY      | ✓         | Auto-dates from TripStart+n; AI-prefilled when recs on                                                                                           |
 | 3   | TRANSPORT      | toggle    | SheetId = `flights`; Mode dropdown: Air/Train/Bus/Car/Ferry/Taxi/Other                                                                           |
 | 4   | HOTELS         | toggle    | Date col auto-fills from TripStart; AI recommendation guide table appended below tracker                                                         |
@@ -72,12 +72,72 @@ Requires `ANTHROPIC_API_KEY` in `.env` (see `.env.example`).
 ExcelJS has no `addChart` API. Charts are injected via `src/lib/excel/chartInjection.ts`, which post-processes the `writeBuffer()` output using JSZip: injects `xl/charts/chart1.xml`, `xl/drawings/drawing1.xml`, rels, and content-type overrides.
 
 - `injectChart(buffer, opts)` accepts `kind: 'doughnut' | 'pie' | 'bar'`
-- All charts bound to `OVERVIEW!$F$18:$F$23` (cats) / `$M$18:$M$23` (hidden helper col, always populated)
+- Budget chart bound to `OVERVIEW!$F$18:$F$23` (cats) / `$M$18:$M$23` (hidden helper col, always populated)
 - `plotVisOnly=0` so hidden column still plots
 - Theme colors: `CHART_PALETTES` (Record\<ThemeId, string[]>, 6 colors/theme)
-- Anchor: F27:L45
+- Budget chart anchor: F27:L45
 
-Verify charts: `node scripts/verify-chart-injection.mjs`
+**Two charts on OVERVIEW**: `index.ts` calls `injectChart` twice — the budget bar chart, then a trip-readiness doughnut (Ready/To-do, bound to hidden cells `S1:S2`/`T1:T2`, anchor A24:E40, gated on `state.sheets.packingList || state.sheets.tasks`). The second call lands on the MERGE branch (a drawing part already exists after the first call) and appends a second `<xdr:twoCellAnchor>` into the same drawing part. `buildChartAnchorXml`/`buildDrawingXml` take a `frameId` param (`chartIdx + 1`) so each chart's `cNvPr id` is unique — two charts sharing a drawing part with the same id produces an Excel "repair" prompt on open.
+
+**Centered ring label**: the readiness doughnut passes `legend: false, dataLabels: false` and no `title` (an in-cell "TRIP READINESS" header + `overview.ts`'s `B31`/`B33` cells carry that instead), so its plot area — and the hole — stay centered in the anchor. Every injected chart also gets `<c:roundedCorners val="0"/>` and a transparent (`noFill`) chart-space background (`chartInjection.ts`), which is what lets the `B31` cell's `=TEXT(S1/S3,"0%")` show through the doughnut's hole instead of sitting behind an opaque white box. This float-a-cell-behind-the-hole technique needs live-rendering verification in Excel and Google Sheets — alignment depends on Excel's automatic plot-area layout math and isn't guaranteed identical across viewers.
+
+Verify charts: `node scripts/verify-chart-injection.mjs` (single-chart XML shape) and `node scripts/verify-two-chart-injection.mjs` (two charts merged into one drawing part, frame-id collision regression)
+
+## OVERVIEW Hero Band (rows 1–14)
+
+Replaces the old title bar + 12-row label/value ledger. Excel can't composite editable
+cell text on top of an opaque floating image (drawings always render above the grid —
+no CSS-style layering), so this is a dark text panel **beside** the cover photo, not
+overlaid on it:
+
+- **A1:D14** — solid `ts.palette.primary` fill, no borders. Destination headline (`A2:D3`,
+  steps down a font size past 18 chars), date line (`A5` TripStart / `B5` TripEnd), a
+  duration/party/travelers line (`A7` derived duration / `B7` party-type dropdown / `C7`
+  travelers), and the countdown badge (`A9:B10` oversized count + `A11:B11` unit caption,
+  accent-filled across all three rows — the mockup's big circular "292 / DAYS TO GO"
+  marker, which can't be drawn as a circle over the photo). The count and unit are two
+  cells rather than one sentence so the number can carry its own display size; rows 9–10
+  are heightened to 26pt to fit it.
+- **No separator columns.** Punctuation that belongs to a value is folded into that
+  value's number format (`"–  "mmm d, yyyy` on TripEnd, `0" days"`, `0" travelers"`), so
+  the cell stays a genuinely editable raw date/number while displaying the decoration.
+  A narrow separator column would be shared by every other A:D block down the sheet (the
+  row-15 strip, currency widget, quick-nav, readiness ring) and is what forced the
+  row-15 labels to clip.
+- **Column E** is a deliberately empty, unfilled 3-wide spacer between the panel and the
+  photo. **A–E widths are set once, with the hero band** — sized for its title/header
+  fonts, well above the 11pt default the width unit assumes. The later "Column widths"
+  block sets F–K only; re-adding A–E there silently discards the hero sizing (this
+  regressed once and produced `###` and clipped labels everywhere).
+- **F1:K14** — cover photo (`state.overviewImage`), embedded via the `addDataUrlImage`
+  helper. This is the workbook's **only** image. `PictureUploader.tsx`'s crop target
+  (`TARGET_W`/`TARGET_H`) must match this anchor's aspect ratio (currently 1400×756,
+  ~1.85:1) or the embedded photo stretches.
+- **Row 15** reuses the old ledger's trailing spacer row for a compact Currency/Total
+  Budget strip (`A15`/`B15`/`C15`/`D15`) — sized to fit exactly where the old block ended
+  so row 16 onward (Budget Summary and everything below) never needs to move.
+- `ws.views = [{ showGridLines: false }]` — no gridlines and no freeze pane (every other
+  sheet builder freezes header rows; this is a deliberate OVERVIEW-only exception since
+  it's a one-screen dashboard, not a scrollable table).
+
+All hero-band styling is bespoke/inline in `overview.ts`, not the shared `styleFactory`
+helpers — scoped to this sheet so every other sheet keeps its existing table look.
+
+**Never use `styleSectionHeader`/`styleDataRow` on OVERVIEW.** Those walk *every*
+populated cell in a row, and OVERVIEW stacks two independent content columns (the A:D
+panel and the F:K cards) that share row numbers — so a header on one side restyles the
+other side's data (this shipped once: the TRIP READINESS header at row 23 bolded the
+Miscellaneous budget row, and the neighborhood guide at rows 46+ restyled the quick-nav
+links). Use the column-scoped `styleSectionHeaderCells` / `styleDataRowCells` helpers in
+`overview.ts` with `LEFT_COLS` / `RIGHT_COLS` instead.
+
+**The readiness ring's centered % must be centered on the chart FRAME, not eyeballed.**
+The frame is anchored `A24:E40` whose `toCol: 4` is an *exclusive* right edge, so it spans
+columns A–D only; merging `A31:D32` therefore spans exactly the frame width and lands the
+text on the donut hole. (`B31:D32` sits ~6 width units right of center, which pushes the
+text under the ring — that shipped once too.) Vertically, rows 24–39 total ~238pt (row 24
+= 20pt total row, row 25 = 8pt spacer, rest default 15pt), so the mid-line falls on the
+31/32 boundary. Keep that arithmetic in sync with the anchor and the A–D widths.
 
 ## Recalculation Contract (Excel for Mac chart repaint)
 
@@ -158,6 +218,9 @@ scripts/
   verify-chart-injection.mjs
   verify-currency-dropdown.mjs
   verify-image-chart-injection.mjs
+  verify-two-chart-injection.mjs
+  verify-sheet-protection.mjs
+  verify-quick-nav-icons.mjs
 ```
 
 ## Row Height / Text Wrapping (ExcelJS)
@@ -182,6 +245,9 @@ Copy `.env.example` → `.env` and add `ANTHROPIC_API_KEY` to test AI recommenda
 node scripts/verify-chart-injection.mjs      # bar, pie, donut → /tmp/chart-*.xlsx
 node scripts/verify-currency-dropdown.mjs    # currency dropdown round-trip
 node scripts/verify-image-chart-injection.mjs
+node scripts/verify-two-chart-injection.mjs  # budget chart + readiness doughnut share one drawing part
+node scripts/verify-sheet-protection.mjs
+node scripts/verify-quick-nav-icons.mjs      # OVERVIEW JUMP TO strip: per-sheet emoji survive the HYPERLINK formula round-trip
 ```
 
 ## Git Workflow

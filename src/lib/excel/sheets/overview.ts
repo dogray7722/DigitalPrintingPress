@@ -1,19 +1,22 @@
 import type ExcelJS from 'exceljs'
-import type { WizardState } from '../../../types/wizard'
+import type { SheetId, WizardState } from '../../../types/wizard'
+import { SHEET_ICONS } from '../../../types/wizard'
 import type { ThemeStyles } from '../styleFactory'
-import type { ExchangeRate } from '../../recommendations/types'
+import type { ExchangeRate, Recommendations } from '../../recommendations/types'
 import {
-  styleTitleRow,
-  styleSectionHeader,
   styleColumnHeader,
   styleDataRow,
+  styleDataCell,
   styleTotalRow,
   styleLabelCell,
   styleValueCell,
+  truncate,
 } from '../styleFactory'
 import { computeTotalBudget } from '../../utils'
 import { THEMES } from '../../../types/theme'
 import { CURRENCIES, getCurrencySymbol, getCurrencyNumFmt } from '../../../data/currencies'
+import { getPackingList } from '../../../data/packingLists'
+import { DEFAULT_TASKS } from './tasks'
 import { addDays } from 'date-fns'
 
 const BUDGET_CATEGORIES = [
@@ -230,11 +233,205 @@ function buildCurrencyWidget(
   resultCell.protection = { hidden: true }
 }
 
+// Trip-readiness ring data (hidden cols S/T), feeding an injected doughnut (index.ts).
+// Ready = checked packing items + checked tasks; Total = all such items. Each term is
+// guarded (IFERROR + sheet toggle) so a disabled sheet never leaves a #REF. A fresh
+// workbook's packing/task rows are already pre-populated with real items (only the
+// checkmark column starts empty), so the true fresh-workbook total is the actual item
+// count — computed here so the cached formula results (and the centered % label, before
+// first recalc) are accurate rather than a placeholder 0.
+function buildReadinessHelpers(ws: ExcelJS.Worksheet, ts: ThemeStyles, state: WizardState): void {
+  if (!state.sheets.packingList && !state.sheets.tasks) return
+  const packDone = state.sheets.packingList ? `IFERROR(COUNTIF('PACKING LIST'!$C$5:$C$500,"✓"),0)` : '0'
+  const taskDone = state.sheets.tasks ? `IFERROR(COUNTIF('TASKS'!$D$5:$D$500,"✓"),0)` : '0'
+  const packTot = state.sheets.packingList ? `IFERROR(COUNTA('PACKING LIST'!$B$5:$B$500),0)` : '0'
+  const taskTot = state.sheets.tasks ? `IFERROR(COUNTA('TASKS'!$B$5:$B$500),0)` : '0'
+
+  const packCount = state.sheets.packingList ? getPackingList(state.travelMonth).length : 0
+  const taskCount = state.sheets.tasks ? DEFAULT_TASKS.length : 0
+  const total = packCount + taskCount
+
+  ws.getCell('T1').value = 'Ready'
+  ws.getCell('T2').value = 'To do'
+  const s1 = ws.getCell('S1')
+  s1.value = { formula: `${packDone}+${taskDone}`, result: 0 } // ready
+  s1.protection = { hidden: true }
+  const s3 = ws.getCell('S3')
+  s3.value = { formula: `${packTot}+${taskTot}`, result: total } // total
+  s3.protection = { hidden: true }
+  const s2 = ws.getCell('S2')
+  s2.value = { formula: `MAX(S3-S1,0)`, result: total } // remaining
+  s2.protection = { hidden: true }
+  ws.getColumn('S').hidden = true
+  ws.getColumn('T').hidden = true
+
+  // "TRIP READINESS" section header. The chart itself (index.ts) carries no title/legend
+  // so its plot area — and the doughnut's hole — stays centered in its anchor for the
+  // label overlay below. Row 23 is shared with the Budget Summary's last data row
+  // (F23:K23), so style only A:D and leave the row height alone.
+  ws.getCell('A23').value = 'TRIP READINESS'
+  ws.mergeCells('A23:D23')
+  styleSectionHeaderCells(ws, ts, 23, LEFT_COLS)
+
+  // Centered "% ready" label floated over the doughnut's transparent hole.
+  //
+  // The overlay must be centered on the CHART FRAME, not eyeballed: the frame is anchored
+  // A24:E40 (index.ts) whose `toCol: 4` is an exclusive right edge, so it spans columns
+  // A–D only. Merging A31:D32 therefore spans exactly the frame's width, putting the
+  // merged cell's center on the frame's center — and, with no title/legend to offset the
+  // plot area, on the doughnut hole's center. (Merging B31:D32 instead lands ~6 width
+  // units right of center, which pushes the text under the ring.) Vertically, rows 24–39
+  // total ~238pt (row 24 = 20pt total row, row 25 = 8pt spacer, rest default 15pt) so the
+  // frame's mid-line at ~119pt falls on the 31/32 boundary — the center of a 31:32 merge.
+  // Keep this arithmetic in sync with the anchor and the A–D column widths below.
+  const pctCell = ws.getCell('A31')
+  pctCell.value = { formula: 'IFERROR(TEXT(S1/S3,"0%"),"0%")', result: '0%' }
+  pctCell.protection = { hidden: true }
+  ws.mergeCells('A31:D32')
+  pctCell.font = { name: ts.fontName, size: ts.sizes.title, bold: true, color: { argb: ts.palette.secondaryText } }
+  pctCell.alignment = { vertical: 'middle', horizontal: 'center' }
+
+  const readyCaption = ws.getCell('A33')
+  readyCaption.value = 'ready'
+  ws.mergeCells('A33:D33')
+  readyCaption.font = { name: ts.fontName, size: ts.sizes.data, color: { argb: ts.palette.secondaryText } }
+  readyCaption.alignment = { vertical: 'top', horizontal: 'center' }
+
+  // Count caption BELOW the frame (row 40 — the anchor's `toRow: 39` ends at the top of
+  // row 40). A freshly generated workbook is always 0% ready, so the ring alone is a
+  // featureless single-color circle; the counts make it read as a tracker at zero rather
+  // than a failed render.
+  const countCaption = ws.getCell('A40')
+  countCaption.value = {
+    formula: 'IFERROR(S1&" of "&S3&" items complete","")',
+    result: `0 of ${total} items complete`,
+  }
+  countCaption.protection = { hidden: true }
+  ws.mergeCells('A40:D40')
+  countCaption.font = { name: ts.fontName, size: ts.sizes.data, italic: true }
+  countCaption.alignment = { vertical: 'middle', horizontal: 'center' }
+}
+
+// Neighborhood guide from recommendations.regions (same data hotels/dining/excursions use).
+// region.region + region.description drop straight into cells. Returns the next free row.
+function buildNeighborhoodGuide(
+  ws: ExcelJS.Worksheet,
+  ts: ThemeStyles,
+  regions: Recommendations['regions'],
+  startRow: number
+): number {
+  ws.getCell(`F${startRow}`).value = 'WHERE TO BASE YOURSELF'
+  ws.mergeCells(`F${startRow}:K${startRow}`)
+  ws.getRow(startRow).height = 22
+  styleSectionHeaderCells(ws, ts, startRow, RIGHT_COLS)
+  let r = startRow + 1
+  regions.slice(0, 5).forEach((region, i) => {
+    styleDataRowCells(ws, ts, r, RIGHT_COLS, i % 2 === 0)
+    ws.getCell(`F${r}`).value = region.region
+    ws.getCell(`F${r}`).font = { name: ts.fontName, size: ts.sizes.header, bold: true }
+    ws.getCell(`G${r}`).value = region.description ?? ''
+    ws.mergeCells(`G${r}:K${r}`)
+    ws.getCell(`G${r}`).alignment = { wrapText: true, vertical: 'middle', horizontal: 'left' }
+    ws.getRow(r).height = 26
+    r++
+  })
+  return r + 1
+}
+
+// OVERVIEW stacks two INDEPENDENT columns of content (the A:D panel and the F:K cards)
+// that share row numbers, so styleFactory's row-level helpers can't be used here — they
+// walk every populated cell in the row and would restyle the neighbouring column's
+// content (e.g. a section header on the left bolding a budget data row on the right).
+// These apply the same styling to an explicit column range only.
+const LEFT_COLS = ['A', 'B', 'C', 'D'] as const
+const RIGHT_COLS = ['F', 'G', 'H', 'I', 'J', 'K'] as const
+
+function styleSectionHeaderCells(
+  ws: ExcelJS.Worksheet,
+  ts: ThemeStyles,
+  row: number,
+  cols: readonly string[]
+): void {
+  cols.forEach((col) => {
+    const cell = ws.getCell(`${col}${row}`)
+    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: ts.palette.secondary } } as ExcelJS.Fill
+    cell.font = {
+      name: ts.fontName,
+      size: ts.sizes.sectionHeader,
+      bold: true,
+      color: { argb: ts.palette.secondaryText },
+    }
+    cell.alignment = { vertical: 'middle', horizontal: 'left' }
+  })
+}
+
+function styleDataRowCells(
+  ws: ExcelJS.Worksheet,
+  ts: ThemeStyles,
+  row: number,
+  cols: readonly string[],
+  isEven: boolean
+): void {
+  cols.forEach((col) => styleDataCell(ws.getCell(`${col}${row}`), ts, isEven))
+}
+
+// Embeds a base64 data-URL image (JPEG or PNG) into the sheet at the given cell range.
+// exceljs's `Image.buffer` type is a module-local `interface Buffer extends ArrayBuffer
+// {}`, structurally distinct from Node/polyfilled `Buffer` (Uint8Array) — cast through
+// ArrayBuffer, which it's structurally identical to.
+function addDataUrlImage(
+  wb: ExcelJS.Workbook,
+  ws: ExcelJS.Worksheet,
+  dataUrl: string,
+  extension: 'jpeg' | 'png',
+  range: string
+): void {
+  const base64 = dataUrl.slice(dataUrl.indexOf(',') + 1)
+  const imageId = wb.addImage({ buffer: Buffer.from(base64, 'base64') as unknown as ArrayBuffer, extension })
+  ws.addImage(imageId, range)
+}
+
+// Quick-nav: one internal HYPERLINK per enabled sheet, merged across A:D. Only enabled
+// sheets get a link, so none dangle. Sheet display names come from the builders' tab
+// names. Returns the next free row.
+function buildQuickNav(ws: ExcelJS.Worksheet, state: WizardState, ts: ThemeStyles, startRow: number): number {
+  const links: [boolean, string, string, SheetId][] = [
+    [state.sheets.itinerary, 'ITINERARY', 'Itinerary', 'itinerary'],
+    [state.sheets.flights, 'TRANSPORTATION', 'Transportation', 'flights'],
+    [state.sheets.hotels, 'ACCOMMODATION', 'Accommodation', 'hotels'],
+    [state.sheets.restaurants, 'DINING', 'Dining', 'restaurants'],
+    [state.sheets.excursions, 'EXCURSIONS', 'Excursions', 'excursions'],
+    [state.sheets.packingList, 'PACKING LIST', 'Packing List', 'packingList'],
+    [state.sheets.tasks, 'TASKS', 'Tasks', 'tasks'],
+    [state.sheets.budgetTracker, 'OTHER EXPENSES', 'Other Expenses', 'budgetTracker'],
+  ]
+  ws.getCell(`A${startRow}`).value = 'JUMP TO'
+  ws.mergeCells(`A${startRow}:D${startRow}`)
+  ws.getRow(startRow).height = 22
+  styleSectionHeaderCells(ws, ts, startRow, LEFT_COLS)
+  let r = startRow + 1
+  links.filter(([on]) => on).forEach(([, sheet, label, id], i) => {
+    styleDataRowCells(ws, ts, r, LEFT_COLS, i % 2 === 0)
+    const cell = ws.getCell(`A${r}`)
+    // Icon comes from the shared SHEET_ICONS map (same emoji the Step 3 toggle grid
+    // shows). It renders in its own colors and ignores the font color below —
+    // only the label text picks up the theme primary.
+    const text = `${SHEET_ICONS[id]}  ${label}`
+    cell.value = { formula: `HYPERLINK("#'${sheet}'!A1","${text}")`, result: text }
+    cell.font = { name: ts.fontName, size: ts.sizes.data, bold: true, color: { argb: ts.palette.primary } }
+    ws.mergeCells(`A${r}:D${r}`)
+    ws.getRow(r).height = 20
+    r++
+  })
+  return r
+}
+
 export function buildOverviewSheet(
   wb: ExcelJS.Workbook,
   state: WizardState,
   ts: ThemeStyles,
-  exchangeRate?: ExchangeRate
+  exchangeRate?: ExchangeRate,
+  recommendations?: Recommendations
 ): void {
   const ws = wb.addWorksheet('OVERVIEW')
   ws.properties.tabColor = { argb: THEMES[state.theme].tabColor }
@@ -245,138 +442,201 @@ export function buildOverviewSheet(
   const totalBudget = computeTotalBudget(state.budgets, state.duration)
   const currSym = getCurrencySymbol(state.currency)
 
-  // ── Row 1: Title ────────────────────────────────────────────────────────────
-  const titleRow = ws.getRow(1)
-  const titleCell = ws.getCell('A1')
-  titleCell.value = `✈  ${dest.toUpperCase()}  —  TRAVEL PLANNER`
-  ws.mergeCells('A1:N1')
-  styleTitleRow(titleRow, ts)
-
-  // ── Row 2: spacer ───────────────────────────────────────────────────────────
-  ws.getRow(2).height = 6
-
-  // ── Key-value info block (rows 3–14, values in col D for named ranges) ──────
-  // All rows 3–14 get an explicit height of 20pt (240pt total ≈ 320px @ 96dpi) — both
-  // for visual consistency of the key-value block and so the F3:K14 cover-photo anchor,
-  // which spans these same rows, renders at a predictable pixel height.
-  for (let r = 3; r <= 14; r++) ws.getRow(r).height = 20
-
-  const kvLabels: [number, string][] = [
-    [3, 'TRIP START DATE'],
-    [4, 'TRIP END DATE'],
-    [5, 'DURATION'],
-    [6, 'DAYS UNTIL TRIP'],
-    [7, ''],
-    [8, 'PARTY TYPE'],
-    [9, 'TRAVELERS'],
-    [10, ''],
-    [11, 'CURRENCY'],
-    [12, ''],
-    [13, ''],
-    [14, 'TOTAL BUDGET'],
-  ]
-
-  kvLabels.forEach(([rowNum, label]) => {
-    if (!label) return
-    const labelCell = ws.getCell(`A${rowNum}`)
-    labelCell.value = label
-    ws.mergeCells(`A${rowNum}:C${rowNum}`)
-    styleLabelCell(labelCell, ts)
-  })
-
-  // D3 = TripStart (named range anchor) — user-editable
-  const d3 = ws.getCell('D3')
-  d3.value = startDate
-  d3.numFmt = ts.numFmtDate
-  d3.protection = { locked: false }
-  styleValueCell(d3, ts)
-
-  // D4 = TripEnd (named range anchor) — user-editable
-  const d4 = ws.getCell('D4')
-  d4.value = endDate
-  d4.numFmt = ts.numFmtDate
-  d4.protection = { locked: false }
-  styleValueCell(d4, ts)
-
-  const d5 = ws.getCell('D5')
-  d5.value = {
-    formula: 'IFERROR(INT(D4-D3+1)&" days","")',
-    result: `${state.duration} days`,
+  // ── Hero band (rows 1–14): dark text panel (A:D) beside the cover photo (F:K) ──
+  // Excel can't truly composite editable cell text on top of an opaque floating image
+  // (drawings always render above the grid, unlike CSS layering), so the destination/
+  // dates/party/countdown live in a panel immediately BESIDE the photo instead. Column E
+  // is a deliberately empty, unfilled spacer separating the two so they don't butt
+  // together.
+  //
+  // Every value here is one cell wide — NO dedicated separator columns. A narrow
+  // separator column would be shared by every other A:D block down the sheet (the
+  // currency strip, quick-nav, the readiness ring) and is what made row 15's labels
+  // clip. Punctuation that belongs to a value is folded into that value's number format
+  // instead (e.g. the date range's en dash), which keeps the cell a genuinely editable
+  // raw date/number while displaying the decoration.
+  for (let r = 1; r <= 14; r++) ws.getRow(r).height = 20
+  const heroFill = { type: 'pattern', pattern: 'solid', fgColor: { argb: ts.palette.primary } } as ExcelJS.Fill
+  const heroFont = (size: number, bold = true) =>
+    ({ name: ts.fontName, size, bold, color: { argb: ts.palette.primaryText } }) as ExcelJS.Font
+  for (let r = 1; r <= 14; r++) {
+    LEFT_COLS.forEach((col) => {
+      ws.getCell(`${col}${r}`).fill = heroFill
+    })
   }
-  d5.protection = { hidden: true }
-  styleValueCell(d5, ts)
 
-  // Countdown — precompute a cached result so the cell renders immediately on open.
-  // (Excel/Sheets won't trigger an initial recalc on this freshly written file, so a
-  // formula with no cached result shows blank until the user edits something.)
+  // Destination headline. Long names step down a size rather than clipping — the panel
+  // is ~53 width units and the title size is set for a short name like "NEW YORK".
+  ws.mergeCells('A2:D3')
+  const headline = ws.getCell('A2')
+  const headlineText = truncate(dest.toUpperCase(), 34)
+  headline.value = headlineText
+  headline.font = heroFont(headlineText.length > 18 ? Math.round(ts.sizes.title * 0.72) : ts.sizes.title)
+  headline.alignment = { vertical: 'middle', horizontal: 'left', indent: 1 }
+
+  // Row 5 = date line ("Sep 6  –  Sep 11, 2027"). Two independently-editable date cells;
+  // the en dash lives in B5's number format so no separator cell is needed. Both dates
+  // carry the month so a range spanning two months still reads correctly.
+  const dateFont = heroFont(Math.round(ts.sizes.title * 0.65))
+
+  // A5 = TripStart (named range anchor) — user-editable
+  const a5 = ws.getCell('A5')
+  a5.value = startDate
+  a5.numFmt = 'mmm d'
+  a5.protection = { locked: false }
+  a5.font = dateFont
+  a5.alignment = { vertical: 'middle', horizontal: 'left', indent: 1 }
+
+  // B5 = TripEnd (named range anchor) — user-editable
+  const b5 = ws.getCell('B5')
+  b5.value = endDate
+  b5.numFmt = '"–  "mmm d, yyyy'
+  b5.protection = { locked: false }
+  b5.font = dateFont
+  b5.alignment = { vertical: 'middle', horizontal: 'left' }
+
+  // Row 7: "7 days   Couple   2 travelers" — duration is derived, party type and
+  // travelers stay editable. The numFmt-suffix trick (`0" days"` / `0" travelers"`)
+  // keeps A7/C7 genuinely editable raw numbers while displaying inline captions, so
+  // nothing needs a separate label cell.
+  const lineFont = heroFont(ts.sizes.header)
+
+  const a7 = ws.getCell('A7')
+  a7.value = { formula: 'IFERROR(B5-A5+1,"")', result: state.duration }
+  a7.numFmt = '0" days"'
+  a7.protection = { hidden: true }
+  a7.font = lineFont
+  a7.alignment = { vertical: 'middle', horizontal: 'left', indent: 1 }
+
+  const b7 = ws.getCell('B7')
+  b7.value = state.partyType.charAt(0).toUpperCase() + state.partyType.slice(1)
+  b7.protection = { locked: false }
+  b7.font = lineFont
+  b7.alignment = { vertical: 'middle', horizontal: 'left' }
+  ;(ws as any).dataValidations.add('B7', {
+    type: 'list',
+    allowBlank: false,
+    formulae: ['"Solo,Couple,Family,Group"'],
+    showErrorMessage: false,
+  } as ExcelJS.DataValidation)
+
+  // C7 = NumAdults (named range anchor) — user-editable
+  const c7 = ws.getCell('C7')
+  c7.value = state.partySize
+  c7.numFmt = '0" travelers"'
+  c7.protection = { locked: false }
+  c7.font = lineFont
+  c7.alignment = { vertical: 'middle', horizontal: 'left' }
+
+  // Countdown badge (rows 9–11) — the mockup's big circular "292 / DAYS TO GO" marker.
+  // Excel can't draw it as a circle over the photo, so it's an accent-filled block in the
+  // panel: the count as one oversized number, the unit as a small caption beneath. They
+  // are two cells rather than one sentence so the number can carry its own display size.
+  // Precomputed cached results so both render immediately on open (Excel/Sheets won't
+  // trigger an initial recalc on this freshly written file).
   const today = new Date()
   today.setHours(0, 0, 0, 0)
   const startDay = new Date(startDate.getTime())
   startDay.setHours(0, 0, 0, 0)
   const daysUntil = Math.round((startDay.getTime() - today.getTime()) / 86400000)
-  const daysResult =
-    daysUntil === 0
-      ? 'Today!'
-      : daysUntil > 0
-        ? `${daysUntil} days to go`
-        : `${Math.abs(daysUntil)} days ago`
-  const d6 = ws.getCell('D6')
-  d6.value = {
-    formula:
-      'IFERROR(IF(TripStart=TODAY(),"Today!",IF(TripStart>TODAY(),INT(TripStart-TODAY())&" days to go",INT(TODAY()-TripStart)&" days ago")),"—")',
-    result: daysResult,
+  const badgeFill = { type: 'pattern', pattern: 'solid', fgColor: { argb: ts.palette.secondary } } as ExcelJS.Fill
+  ;['A', 'B'].forEach((col) => {
+    ;[9, 10, 11].forEach((r) => {
+      ws.getCell(`${col}${r}`).fill = badgeFill
+    })
+  })
+  ws.getRow(9).height = 26
+  ws.getRow(10).height = 26
+
+  ws.mergeCells('A9:B10')
+  const badgeCount = ws.getCell('A9')
+  badgeCount.value = {
+    formula: 'IFERROR(ABS(INT(TripStart-TODAY())),"—")',
+    result: Math.abs(daysUntil),
   }
-  d6.protection = { hidden: true }
-  styleValueCell(d6, ts)
+  badgeCount.protection = { hidden: true }
+  badgeCount.font = {
+    name: ts.fontName,
+    size: Math.round(ts.sizes.title * 1.6),
+    bold: true,
+    color: { argb: ts.palette.secondaryText },
+  }
+  badgeCount.alignment = { vertical: 'bottom', horizontal: 'center' }
 
-  const d8 = ws.getCell('D8')
-  d8.value = state.partyType.charAt(0).toUpperCase() + state.partyType.slice(1)
-  styleValueCell(d8, ts)
+  ws.mergeCells('A11:B11')
+  const badgeUnit = ws.getCell('A11')
+  badgeUnit.value = {
+    formula: 'IFERROR(IF(TripStart=TODAY(),"TODAY!",IF(TripStart>TODAY(),"DAYS TO GO","DAYS AGO")),"")',
+    result: daysUntil === 0 ? 'TODAY!' : daysUntil > 0 ? 'DAYS TO GO' : 'DAYS AGO',
+  }
+  badgeUnit.protection = { hidden: true }
+  badgeUnit.font = { name: ts.fontName, size: ts.sizes.data, bold: true, color: { argb: ts.palette.secondaryText } }
+  badgeUnit.alignment = { vertical: 'top', horizontal: 'center' }
 
-  // D9 = NumAdults (named range anchor) — user-editable
-  const d9 = ws.getCell('D9')
-  d9.value = state.partySize
-  d9.protection = { locked: false }
-  styleValueCell(d9, ts)
+  // Column widths for the whole A:D stack — the hero band, the row-15 strip, the
+  // currency widget, the readiness ring and quick-nav all share these, so each column is
+  // sized for the WIDEST thing that lands in it, at the largest font that lands in it
+  // (the hero rows run at title/header sizes, well above the 11pt default these width
+  // units assume). Undersizing here is what produced "###" and clipped labels.
+  //   A: TripStart · duration · "CURRENCY" · quick-nav links
+  //   B: TripEnd (with its "–  " prefix) · party type · currency value
+  //   C: travelers · "TOTAL BUDGET"
+  //   D: total budget value
+  //   E: empty spacer between the panel and the cover photo (never filled)
+  ws.getColumn('A').width = 10
+  ws.getColumn('B').width = 18
+  ws.getColumn('C').width = 16
+  ws.getColumn('D').width = 14
+  ws.getColumn('E').width = 3
 
-  // Currency — informational label (chosen in the wizard), now a dropdown so the
-  // user can pick a different reference currency. Options are written to a hidden
-  // helper column (R) because the full "CODE (symbol)" list exceeds Excel's
-  // 255-char inline list-formula limit. Purely a label — does not affect any
-  // numFmt elsewhere (those are static, baked in at generation time).
-  const d11 = ws.getCell('D11')
-  d11.value = `${state.currency} (${currSym})`
-  d11.protection = { locked: false }
-  styleValueCell(d11, ts)
+  // ── Row 15: Currency + Total Budget compact strip ───────────────────────────
+  // Reuses the row the old key-value block's trailing spacer occupied, so nothing
+  // below (Budget Summary at row 16 onward) needs to move.
+  ws.getRow(15).height = 20
+
+  const currLabel = ws.getCell('A15')
+  currLabel.value = 'CURRENCY'
+  styleLabelCell(currLabel, ts)
+
+  // Currency — informational label (chosen in the wizard), a dropdown so the user can
+  // pick a different reference currency. Options are written to a hidden helper column
+  // (R) because the full "CODE (symbol)" list exceeds Excel's 255-char inline list-
+  // formula limit. Purely a label — does not affect any numFmt elsewhere (those are
+  // static, baked in at generation time).
+  const currValue = ws.getCell('B15')
+  currValue.value = `${state.currency} (${currSym})`
+  currValue.protection = { locked: false }
+  styleValueCell(currValue, ts)
 
   CURRENCIES.forEach((c, i) => {
     ws.getCell(`R${i + 1}`).value = `${c.code} (${c.symbol})`
   })
-  ;(ws as any).dataValidations.add('D11', {
+  ;(ws as any).dataValidations.add('B15', {
     type: 'list',
     allowBlank: true,
     formulae: [`$R$1:$R${CURRENCIES.length}`],
     showErrorMessage: false,
   } as ExcelJS.DataValidation)
 
-  // D14 = TotalBudget (named range anchor) — live sum of the Estimated Budget column,
+  const budgetLabel = ws.getCell('C15')
+  budgetLabel.value = 'TOTAL BUDGET'
+  styleLabelCell(budgetLabel, ts)
+
+  // D15 = TotalBudget (named range anchor) — live sum of the Estimated Budget column,
   // so it reflects any edits the user types into those cells. Cached result keeps the
   // cell populated before the first recalc.
-  const d14 = ws.getCell('D14')
-  d14.value = { formula: 'SUM(G18:G23)', result: totalBudget }
-  d14.numFmt = ts.numFmtCurrency
-  d14.protection = { hidden: true }
-  d14.font = { name: ts.fontName, size: ts.sizes.header, bold: true }
-  d14.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: ts.palette.mediumBg } } as ExcelJS.Fill
-
-  // ── Row 15: spacer ──────────────────────────────────────────────────────────
-  ws.getRow(15).height = 8
+  const budgetValue = ws.getCell('D15')
+  budgetValue.value = { formula: 'SUM(G18:G23)', result: totalBudget }
+  budgetValue.numFmt = ts.numFmtCurrency
+  budgetValue.protection = { hidden: true }
+  budgetValue.font = { name: ts.fontName, size: ts.sizes.header, bold: true }
+  budgetValue.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: ts.palette.mediumBg } } as ExcelJS.Fill
 
   // ── Budget Summary Table (rows 16–24) ───────────────────────────────────────
-  const summaryHeader = ws.getRow(16)
   ws.getCell('F16').value = 'BUDGET SUMMARY'
   ws.mergeCells('F16:K16')
-  styleSectionHeader(summaryHeader, ts)
+  ws.getRow(16).height = 22
+  styleSectionHeaderCells(ws, ts, 16, RIGHT_COLS)
 
   const colHeaderRow = ws.getRow(17)
   ws.getCell('F17').value = 'Category'
@@ -494,16 +754,24 @@ export function buildOverviewSheet(
     buildCurrencyWidget(ws, ts, exchangeRate, 17)
   }
 
+  // Trip-readiness ring: header row 23, chart injected in index.ts anchored A24:E40.
+  buildReadinessHelpers(ws, ts, state)
+
+  // Quick-nav HYPERLINK list, lower-left below the ring.
+  buildQuickNav(ws, state, ts, 42)
+
+  // Neighborhood guide, right column below the budget chart (F27:K44).
+  if (state.useRecommendations && recommendations?.regions?.length) {
+    buildNeighborhoodGuide(ws, ts, recommendations.regions, 46)
+  }
+
   // ── Visual Budget Breakdown ─────────────────────────────────────────────────
   // The breakdown is a native chart object injected after export for every style
   // (bar / pie / donut) — see chartInjection.ts. Nothing to render in-cell here.
 
   // ── Column widths ───────────────────────────────────────────────────────────
-  ws.getColumn('A').width = 20
-  ws.getColumn('B').width = 3
-  ws.getColumn('C').width = 3
-  ws.getColumn('D').width = 28
-  ws.getColumn('E').width = 4
+  // A–E are set with the hero band above (they're sized for its larger fonts) — do not
+  // re-set them here or that sizing is silently discarded.
   ws.getColumn('F').width = 20
   ws.getColumn('G').width = 20
   ws.getColumn('H').width = 16
@@ -520,16 +788,13 @@ export function buildOverviewSheet(
   // Hide the currency-dropdown options helper column (R)
   ws.getColumn('R').hidden = true
 
-  // ── Cover photo (optional, anchored F3:K14) ─────────────────────────────────
+  // ── Cover photo (optional, anchored F1:K14 — full hero band height) ─────────
   if (state.overviewImage) {
-    const base64 = state.overviewImage.dataUrl.slice(state.overviewImage.dataUrl.indexOf(',') + 1)
-    // exceljs's `Image.buffer` type is a module-local `interface Buffer extends
-    // ArrayBuffer {}`, structurally distinct from Node/polyfilled `Buffer`
-    // (Uint8Array) — cast through ArrayBuffer, which it's structurally identical to.
-    const imageId = wb.addImage({ buffer: Buffer.from(base64, 'base64') as unknown as ArrayBuffer, extension: 'jpeg' })
-    ws.addImage(imageId, 'F3:K14')
+    addDataUrlImage(wb, ws, state.overviewImage.dataUrl, 'jpeg', 'F1:K14')
   }
 
-  // Freeze top 2 rows
-  ws.views = [{ state: 'frozen', xSplit: 0, ySplit: 2, activeCell: 'A3' }]
+  // OVERVIEW is a one-screen dashboard, not a scrollable table — no freeze pane (every
+  // other sheet builder freezes its header rows; this is a deliberate OVERVIEW-only
+  // exception) and no gridlines, so the hero band + cards read as a dashboard.
+  ws.views = [{ showGridLines: false }]
 }

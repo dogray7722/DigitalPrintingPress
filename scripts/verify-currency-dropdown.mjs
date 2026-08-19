@@ -1,4 +1,4 @@
-// Verifies the OVERVIEW sheet's D11 currency dropdown: a list-type data validation
+// Verifies the OVERVIEW sheet's B15 currency dropdown: a list-type data validation
 // pointing at a hidden helper column (R) containing "CODE (symbol)" options.
 // Run: node scripts/verify-currency-dropdown.mjs
 import { build } from 'esbuild'
@@ -62,7 +62,15 @@ const state = {
 const ts = {
   fontName: 'Calibri',
   sizes: { title: 18, sectionHeader: 12, header: 12, data: 11 },
-  palette: { primary: 'FFE91E63', secondary: 'FFFCE4EC', lightBg: 'FFFFF5F7', mediumBg: 'FFFCE4EC' },
+  palette: {
+    primary: 'FFE91E63',
+    primaryText: 'FFFFFFFF',
+    secondary: 'FFFCE4EC',
+    secondaryText: 'FF2D1B6B',
+    lightBg: 'FFFFF5F7',
+    mediumBg: 'FFFCE4EC',
+    border: 'FFE0C8D0',
+  },
   numFmtCurrency: '"$"#,##0.00',
   numFmtDate: 'dd mmm yyyy',
   numFmtPercent: '0%',
@@ -72,15 +80,15 @@ const wb = new ExcelJS.Workbook()
 buildOverviewSheet(wb, state, ts)
 const ws = wb.getWorksheet('OVERVIEW')
 
-const d11 = ws.getCell('D11')
-assert(d11.value === 'USD ($)', `D11 initial value is "USD ($)" (got "${d11.value}")`)
+const b15 = ws.getCell('B15')
+assert(b15.value === 'USD ($)', `B15 initial value is "USD ($)" (got "${b15.value}")`)
 
-const dv = ws.dataValidations.find('D11')
-assert(!!dv, 'D11 has a data validation')
-assert(dv?.type === 'list', `D11 data validation type is "list" (got "${dv?.type}")`)
+const dv = ws.dataValidations.find('B15')
+assert(!!dv, 'B15 has a data validation')
+assert(dv?.type === 'list', `B15 data validation type is "list" (got "${dv?.type}")`)
 assert(
   dv?.formulae?.[0] === `$R$1:$R${CURRENCIES.length}`,
-  `D11 data validation formula is "$R$1:$R${CURRENCIES.length}" (got "${dv?.formulae?.[0]}")`
+  `B15 data validation formula is "$R$1:$R${CURRENCIES.length}" (got "${dv?.formulae?.[0]}")`
 )
 
 CURRENCIES.forEach((c, i) => {
@@ -96,8 +104,8 @@ const buf = await wb.xlsx.writeBuffer()
 const wb2 = new ExcelJS.Workbook()
 await wb2.xlsx.load(buf)
 const ws2 = wb2.getWorksheet('OVERVIEW')
-const dv2 = ws2.dataValidations.find('D11')
-assert(dv2?.type === 'list', 'After round-trip: D11 still has a list data validation')
+const dv2 = ws2.dataValidations.find('B15')
+assert(dv2?.type === 'list', 'After round-trip: B15 still has a list data validation')
 assert(ws2.getCell('R1').value === 'USD ($)', 'After round-trip: R1 = "USD ($)"')
 assert(ws2.getColumn('R').hidden === true, 'After round-trip: column R is hidden')
 

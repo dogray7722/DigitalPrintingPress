@@ -1,19 +1,7 @@
 import { cn } from '../../lib/utils'
 import type { SheetId } from '../../types/wizard'
-import { SHEET_LABELS } from '../../types/wizard'
+import { SHEET_ICONS, SHEET_LABELS } from '../../types/wizard'
 import { Sparkles } from 'lucide-react'
-
-const SHEET_ICONS: Record<SheetId, string> = {
-  budgetTracker: '💰',
-  itinerary: '📅',
-  hotels: '🏨',
-  restaurants: '🍽️',
-  excursions: '🎯',
-  packingList: '🎒',
-  flights: '✈️',
-  tasks: '✅',
-  events: '🎉',
-}
 
 const REGULAR_SHEET_IDS: SheetId[] = [
   'budgetTracker',

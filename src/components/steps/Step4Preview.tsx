@@ -33,7 +33,6 @@ export function Step4Preview() {
     return true
   })
 
-  const chartStyleLabels = { bar: 'Bar Chart', pie: 'Pie Chart', donut: 'Donut Chart' }
   const fontFamilyLabels = { sans: 'Sans-Serif', serif: 'Serif', mono: 'Monospace' }
 
   const recommendationsBlocked = state.useRecommendations && !state.destination.trim()
@@ -112,17 +111,13 @@ export function Step4Preview() {
             </div>
           </div>
 
-          <div className="grid grid-cols-3 divide-x divide-gray-100">
+          <div className="grid grid-cols-2 divide-x divide-gray-100">
             <div className="px-4 py-3">
               <div className="text-xs text-gray-400 font-medium">THEME</div>
               <div className="flex items-center gap-1.5 mt-0.5">
                 <div className="w-3 h-3 rounded-full" style={{ backgroundColor: hexFromArgb(palette.primary) }} />
                 <div className="text-sm font-semibold text-gray-800">{THEME_LABELS[state.theme]}</div>
               </div>
-            </div>
-            <div className="px-4 py-3">
-              <div className="text-xs text-gray-400 font-medium">CHART</div>
-              <div className="text-sm font-semibold text-gray-800 mt-0.5">{chartStyleLabels[state.chartStyle]}</div>
             </div>
             <div className="px-4 py-3">
               <div className="text-xs text-gray-400 font-medium">FONT</div>

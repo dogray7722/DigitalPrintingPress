@@ -391,19 +391,25 @@ export function buildInstructionsSheet(
   const namedRanges = [
     {
       name: "TripStart",
-      location: "D3",
+      location: "A5",
       description:
         "Trip start date. Drives ITINERARY auto-dates and all date formulas."
     },
     {
       name: "TripEnd",
-      location: "D4",
+      location: "B5",
       description:
         "Trip end date. Controls how many ITINERARY day rows are visible."
     },
     {
+      name: "NumAdults",
+      location: "C7",
+      description:
+        "Number of travelers. Used in per-person budget/excursion calculations."
+    },
+    {
       name: "TotalBudget",
-      location: "D14",
+      location: "D15",
       description:
         "Total estimated budget (sum of the Budget Summary Estimated Budget column)."
     }

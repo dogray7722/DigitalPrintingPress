@@ -1,14 +1,13 @@
-import { Palette, BarChart2, Type, Layers } from 'lucide-react'
+import { Palette, Type, Layers } from 'lucide-react'
 import { useWizardStore } from '../../store/wizardStore'
 import { ThemePicker } from '../shared/ThemePicker'
-import { ChartStylePicker } from '../shared/ChartStylePicker'
 import { FontPicker } from '../shared/FontPicker'
 import { SheetToggleGrid } from '../shared/SheetToggleGrid'
-import type { ThemeId, ChartStyle, FontFamily, FontSize, SheetId } from '../../types/wizard'
+import type { ThemeId, FontFamily, FontSize, SheetId } from '../../types/wizard'
 
 export function Step3Style() {
   const {
-    theme, chartStyle, fontFamily, fontSize, sheets, useRecommendations,
+    theme, fontFamily, fontSize, sheets, useRecommendations,
     setField, setSheet,
   } = useWizardStore()
 
@@ -23,18 +22,6 @@ export function Step3Style() {
         <ThemePicker
           value={theme}
           onChange={(id: ThemeId) => setField('theme', id)}
-        />
-      </div>
-
-      {/* Chart / budget visual style */}
-      <div>
-        <label className="flex items-center gap-2 text-sm font-semibold text-gray-700 mb-3">
-          <BarChart2 size={15} className="text-indigo-500" />
-          Budget Breakdown Style
-        </label>
-        <ChartStylePicker
-          value={chartStyle}
-          onChange={(s: ChartStyle) => setField('chartStyle', s)}
         />
       </div>
 

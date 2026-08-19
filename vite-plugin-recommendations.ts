@@ -1,28 +1,38 @@
-import type { Plugin, ViteDevServer } from 'vite'
-import type { IncomingMessage, ServerResponse } from 'http'
-import Anthropic from '@anthropic-ai/sdk'
-import path from 'path'
-import fs from 'fs'
+import type { Plugin, ViteDevServer } from "vite";
+import type { IncomingMessage, ServerResponse } from "http";
+import Anthropic from "@anthropic-ai/sdk";
+import path from "path";
+import fs from "fs";
 
 const MONTH_NAMES = [
-  'January', 'February', 'March', 'April', 'May', 'June',
-  'July', 'August', 'September', 'October', 'November', 'December',
-]
+  "January",
+  "February",
+  "March",
+  "April",
+  "May",
+  "June",
+  "July",
+  "August",
+  "September",
+  "October",
+  "November",
+  "December"
+];
 
 interface RecommendationInput {
-  destination: string
-  duration: number
-  partySize: number
-  travelMonth: number
-  tripStyle: 'budget' | 'midrange' | 'luxury'
+  destination: string;
+  duration: number;
+  partySize: number;
+  travelMonth: number;
+  tripStyle: "budget" | "midrange" | "luxury";
 }
 
 // Lazy singleton — deferred until first request so that loadEnv() in vite.config.ts
 // has already populated process.env before the SDK reads ANTHROPIC_API_KEY.
-let _client: Anthropic | null = null
+let _client: Anthropic | null = null;
 function getClient(): Anthropic {
-  if (!_client) _client = new Anthropic()
-  return _client
+  if (!_client) _client = new Anthropic();
+  return _client;
 }
 
 // ---------------------------------------------------------------------------
@@ -32,7 +42,7 @@ function getClient(): Anthropic {
 
 const SYSTEM_PROMPT = `You are an expert travel research assistant. You use web search to find current, accurate information about destinations, including real hotels, real restaurants, real attractions/excursions, and real annual events/festivals.
 
-When asked for trip recommendations, you research the destination thoroughly using web search, then respond with a single valid JSON object matching the schema provided. Output JSON only — no preamble, no markdown, no commentary. The response must start with "{" and end with "}".`
+When asked for trip recommendations, you research the destination thoroughly using web search, then respond with a single valid JSON object matching the schema provided. Output JSON only — no preamble, no markdown, no commentary. The response must start with "{" and end with "}".`;
 
 // All static structure: instructions, JSON schema, and constraints.
 // Dynamic trip details (destination, duration, etc.) are appended separately.
@@ -103,7 +113,7 @@ CONSTRAINTS
 - regions: 3–5 items, each with 2–4 hotels, 2–4 restaurants, and 2–4 excursions
 - Use real, currently-operating names. Do not invent.
 - Keep ALL description / activity text concise — one short sentence or phrase each, no run-ons. Respect the character limits noted above so the text fits neatly in spreadsheet cells.
-- Output JSON only. No markdown fences, no preamble.`
+- Output JSON only. No markdown fences, no preamble.`;
 
 // ---------------------------------------------------------------------------
 // Response-level cache — provides guaranteed savings on repeated lookups of
@@ -111,21 +121,29 @@ CONSTRAINTS
 // common pattern during development and demo generation.
 // ---------------------------------------------------------------------------
 
-interface CacheEntry { data: unknown; expiresAt: number }
-const responseCache = new Map<string, CacheEntry>()
-const CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000 // 30 days
+interface CacheEntry {
+  data: unknown;
+  expiresAt: number;
+}
+const responseCache = new Map<string, CacheEntry>();
+const CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 
-const CACHE_FILE_PATH = path.resolve(process.cwd(), '.recommendations-cache.json')
+const CACHE_FILE_PATH = path.resolve(
+  process.cwd(),
+  ".recommendations-cache.json"
+);
 
 function loadCacheFromDisk(): void {
   try {
-    const raw = fs.readFileSync(CACHE_FILE_PATH, 'utf8')
-    const entries = JSON.parse(raw) as Array<[string, CacheEntry]>
-    const now = Date.now()
+    const raw = fs.readFileSync(CACHE_FILE_PATH, "utf8");
+    const entries = JSON.parse(raw) as Array<[string, CacheEntry]>;
+    const now = Date.now();
     for (const [key, entry] of entries) {
-      if (entry.expiresAt > now) responseCache.set(key, entry)
+      if (entry.expiresAt > now) responseCache.set(key, entry);
     }
-    console.log(`[recommendations] loaded ${responseCache.size} cached destination(s) from disk`)
+    console.log(
+      `[recommendations] loaded ${responseCache.size} cached destination(s) from disk`
+    );
   } catch {
     // File doesn't exist yet or is corrupt — start with empty cache
   }
@@ -133,32 +151,49 @@ function loadCacheFromDisk(): void {
 
 function saveCacheToDisk(): void {
   try {
-    fs.writeFileSync(CACHE_FILE_PATH, JSON.stringify([...responseCache.entries()]), 'utf8')
+    fs.writeFileSync(
+      CACHE_FILE_PATH,
+      JSON.stringify([...responseCache.entries()]),
+      "utf8"
+    );
   } catch {
     // Non-fatal — cache will still work in-memory this session
   }
 }
 
-loadCacheFromDisk()
+loadCacheFromDisk();
 
 // ---------------------------------------------------------------------------
 // Exchange rate cache — same 30-day TTL, keyed by "FROM-TO" pair
 // ---------------------------------------------------------------------------
 
-interface ExchangeRateEntry { from: string; to: string; rate: number; fetchedAt: string }
-interface ExchangeRateCacheEntry { data: ExchangeRateEntry; expiresAt: number }
-const exchangeRateCache = new Map<string, ExchangeRateCacheEntry>()
-const EXCHANGE_RATE_CACHE_FILE = path.resolve(process.cwd(), '.exchange-rate-cache.json')
+interface ExchangeRateEntry {
+  from: string;
+  to: string;
+  rate: number;
+  fetchedAt: string;
+}
+interface ExchangeRateCacheEntry {
+  data: ExchangeRateEntry;
+  expiresAt: number;
+}
+const exchangeRateCache = new Map<string, ExchangeRateCacheEntry>();
+const EXCHANGE_RATE_CACHE_FILE = path.resolve(
+  process.cwd(),
+  ".exchange-rate-cache.json"
+);
 
 function loadExchangeRateCache(): void {
   try {
-    const raw = fs.readFileSync(EXCHANGE_RATE_CACHE_FILE, 'utf8')
-    const entries = JSON.parse(raw) as Array<[string, ExchangeRateCacheEntry]>
-    const now = Date.now()
+    const raw = fs.readFileSync(EXCHANGE_RATE_CACHE_FILE, "utf8");
+    const entries = JSON.parse(raw) as Array<[string, ExchangeRateCacheEntry]>;
+    const now = Date.now();
     for (const [key, entry] of entries) {
-      if (entry.expiresAt > now) exchangeRateCache.set(key, entry)
+      if (entry.expiresAt > now) exchangeRateCache.set(key, entry);
     }
-    console.log(`[exchange-rate] loaded ${exchangeRateCache.size} cached pair(s) from disk`)
+    console.log(
+      `[exchange-rate] loaded ${exchangeRateCache.size} cached pair(s) from disk`
+    );
   } catch {
     // File doesn't exist yet or is corrupt — start with empty cache
   }
@@ -166,72 +201,105 @@ function loadExchangeRateCache(): void {
 
 function saveExchangeRateCache(): void {
   try {
-    fs.writeFileSync(EXCHANGE_RATE_CACHE_FILE, JSON.stringify([...exchangeRateCache.entries()]), 'utf8')
+    fs.writeFileSync(
+      EXCHANGE_RATE_CACHE_FILE,
+      JSON.stringify([...exchangeRateCache.entries()]),
+      "utf8"
+    );
   } catch {
     // Non-fatal
   }
 }
 
-loadExchangeRateCache()
+loadExchangeRateCache();
 
 function formatFetchedAt(date: Date): string {
-  const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
-  return `${date.getDate()} ${months[date.getMonth()]} ${date.getFullYear()}`
+  const months = [
+    "Jan",
+    "Feb",
+    "Mar",
+    "Apr",
+    "May",
+    "Jun",
+    "Jul",
+    "Aug",
+    "Sep",
+    "Oct",
+    "Nov",
+    "Dec"
+  ];
+  return `${date.getDate()} ${months[date.getMonth()]} ${date.getFullYear()}`;
 }
 
-async function generateExchangeRate(from: string, to: string): Promise<ExchangeRateEntry> {
+async function generateExchangeRate(
+  from: string,
+  to: string
+): Promise<ExchangeRateEntry> {
   if (!process.env.ANTHROPIC_API_KEY) {
-    throw new Error('ANTHROPIC_API_KEY is not set.')
+    throw new Error("ANTHROPIC_API_KEY is not set.");
   }
 
-  const cacheKey = `${from}-${to}`
-  const cached = exchangeRateCache.get(cacheKey)
+  const cacheKey = `${from}-${to}`;
+  const cached = exchangeRateCache.get(cacheKey);
   if (cached && cached.expiresAt > Date.now()) {
-    console.log(`[exchange-rate] cache hit for ${cacheKey}`)
-    return cached.data
+    console.log(`[exchange-rate] cache hit for ${cacheKey}`);
+    return cached.data;
   }
 
   const message = await getClient().messages.create({
-    model: 'claude-haiku-4-5-20251001',
+    model: "claude-haiku-4-5-20251001",
     max_tokens: 256,
-    tools: [{ type: 'web_search_20250305' as const, name: 'web_search', max_uses: 2 }],
-    messages: [{
-      role: 'user',
-      content: `Search for the current ${from} to ${to} exchange rate today. Return ONLY a JSON object: {"rate": <number>}. The rate should be how many ${to} equal 1 ${from}. No other text.`,
-    }],
-  })
+    tools: [
+      { type: "web_search_20250305" as const, name: "web_search", max_uses: 2 }
+    ],
+    messages: [
+      {
+        role: "user",
+        content: `Search for the current ${from} to ${to} exchange rate today. Return ONLY a JSON object: {"rate": <number>}. The rate should be how many ${to} equal 1 ${from}. No other text.`
+      }
+    ]
+  });
 
   const textBlocks = message.content
-    .filter((b: { type: string }) => b.type === 'text')
-    .map((b: { type: string; text?: string }) => b.text ?? '')
-    .join('\n')
+    .filter((b: { type: string }) => b.type === "text")
+    .map((b: { type: string; text?: string }) => b.text ?? "")
+    .join("\n");
 
-  let rate: number | null = null
+  let rate: number | null = null;
   try {
-    const jsonStr = extractJson(textBlocks)
-    const parsed = JSON.parse(jsonStr) as { rate?: unknown }
-    if (typeof parsed.rate === 'number' && parsed.rate > 0) rate = parsed.rate
+    const jsonStr = extractJson(textBlocks);
+    const parsed = JSON.parse(jsonStr) as { rate?: unknown };
+    if (typeof parsed.rate === "number" && parsed.rate > 0) rate = parsed.rate;
   } catch {
-    const match = textBlocks.match(/\d[\d,]*\.?\d*/g)
+    const match = textBlocks.match(/\d[\d,]*\.?\d*/g);
     if (match) {
-      const num = parseFloat(match[0].replace(/,/g, ''))
-      if (num > 0) rate = num
+      const num = parseFloat(match[0].replace(/,/g, ""));
+      if (num > 0) rate = num;
     }
   }
 
-  if (rate === null) throw new Error(`Could not parse exchange rate for ${from}→${to}`)
+  if (rate === null)
+    throw new Error(`Could not parse exchange rate for ${from}→${to}`);
 
-  console.log(`[exchange-rate] ${from}→${to} = ${rate}`)
+  console.log(`[exchange-rate] ${from}→${to} = ${rate}`);
 
-  const result: ExchangeRateEntry = { from, to, rate, fetchedAt: formatFetchedAt(new Date()) }
-  exchangeRateCache.set(cacheKey, { data: result, expiresAt: Date.now() + CACHE_TTL_MS })
-  saveExchangeRateCache()
+  const result: ExchangeRateEntry = {
+    from,
+    to,
+    rate,
+    fetchedAt: formatFetchedAt(new Date())
+  };
+  exchangeRateCache.set(cacheKey, {
+    data: result,
+    expiresAt: Date.now() + CACHE_TTL_MS
+  });
+  saveExchangeRateCache();
 
-  return result
+  return result;
 }
 
 function getCacheKey(input: RecommendationInput): string {
-  return input.destination.trim().toLowerCase()
+  return input.destination.trim().toLowerCase();
 }
 
 // ---------------------------------------------------------------------------
@@ -239,13 +307,13 @@ function getCacheKey(input: RecommendationInput): string {
 // ---------------------------------------------------------------------------
 
 function buildDynamicTripDetails(input: RecommendationInput): string {
-  const monthName = MONTH_NAMES[input.travelMonth - 1] ?? 'this year'
+  const monthName = MONTH_NAMES[input.travelMonth - 1] ?? "this year";
   const tierLabel =
-    input.tripStyle === 'budget'
-      ? 'Budget Backpacker (hostels, budget airlines, street food, free attractions)'
-      : input.tripStyle === 'midrange'
-        ? 'Mid-Range (3-star hotels, economy flights, local restaurants, paid attractions)'
-        : 'Luxury (5-star hotels, business/first class flights, fine dining, private tours)'
+    input.tripStyle === "budget"
+      ? "Budget Backpacker (hostels, budget airlines, street food, free attractions)"
+      : input.tripStyle === "midrange"
+        ? "Mid-Range (3-star hotels, economy flights, local restaurants, paid attractions)"
+        : "Luxury (5-star hotels, business/first class flights, fine dining, private tours)";
 
   return `TRIP DETAILS
 - Destination: ${input.destination}
@@ -254,7 +322,7 @@ function buildDynamicTripDetails(input: RecommendationInput): string {
 - Travelers: ${input.partySize}
 - Tier: ${tierLabel}
 
-Apply the instructions above to this specific trip. The itinerary must have EXACTLY ${input.duration} day objects (day 1 through day ${input.duration}). Prices must match the ${input.tripStyle} tier.`
+Apply the instructions above to this specific trip. The itinerary must have EXACTLY ${input.duration} day objects (day 1 through day ${input.duration}). Prices must match the ${input.tripStyle} tier.`;
 }
 
 // ---------------------------------------------------------------------------
@@ -262,111 +330,127 @@ Apply the instructions above to this specific trip. The itinerary must have EXAC
 // ---------------------------------------------------------------------------
 
 function extractJson(rawText: string): string {
-  let trimmed = rawText.trim()
-  if (trimmed.startsWith('```')) {
-    trimmed = trimmed.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '')
+  let trimmed = rawText.trim();
+  if (trimmed.startsWith("```")) {
+    trimmed = trimmed.replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/, "");
   }
-  const start = trimmed.indexOf('{')
-  if (start === -1) throw new Error('No JSON object found in response')
-  let depth = 0
-  let inString = false
-  let escape = false
+  const start = trimmed.indexOf("{");
+  if (start === -1) throw new Error("No JSON object found in response");
+  let depth = 0;
+  let inString = false;
+  let escape = false;
   for (let i = start; i < trimmed.length; i++) {
-    const ch = trimmed[i]
-    if (escape) { escape = false; continue }
-    if (ch === '\\') { escape = true; continue }
-    if (ch === '"') { inString = !inString; continue }
-    if (inString) continue
-    if (ch === '{') depth++
-    else if (ch === '}') {
-      depth--
-      if (depth === 0) return trimmed.slice(start, i + 1)
+    const ch = trimmed[i];
+    if (escape) {
+      escape = false;
+      continue;
+    }
+    if (ch === "\\") {
+      escape = true;
+      continue;
+    }
+    if (ch === '"') {
+      inString = !inString;
+      continue;
+    }
+    if (inString) continue;
+    if (ch === "{") depth++;
+    else if (ch === "}") {
+      depth--;
+      if (depth === 0) return trimmed.slice(start, i + 1);
     }
   }
-  throw new Error('Incomplete JSON in response')
+  throw new Error("Incomplete JSON in response");
 }
 
 async function generateRecommendations(input: RecommendationInput) {
   if (!process.env.ANTHROPIC_API_KEY) {
     throw new Error(
-      'ANTHROPIC_API_KEY is not set. Copy .env.example to .env and add your key.'
-    )
+      "ANTHROPIC_API_KEY is not set. Copy .env.example to .env and add your key."
+    );
   }
 
   // Check response-level cache first.
-  const cacheKey = getCacheKey(input)
-  const cached = responseCache.get(cacheKey)
+  const cacheKey = getCacheKey(input);
+  const cached = responseCache.get(cacheKey);
   if (cached && cached.expiresAt > Date.now()) {
-    console.log('[recommendations] response cache hit for:', input.destination)
-    return cached.data
+    console.log("[recommendations] response cache hit for:", input.destination);
+    return cached.data;
   }
 
   const message = await getClient().messages.create({
-    model: 'claude-sonnet-4-6',
+    model: "claude-sonnet-4-6",
     max_tokens: 16000,
     // cache_control on system covers the tools + system prefix together.
     system: [
       {
-        type: 'text',
+        type: "text",
         text: SYSTEM_PROMPT,
-        cache_control: { type: 'ephemeral' },
-      },
+        cache_control: { type: "ephemeral" }
+      }
     ],
     tools: [
       {
-        type: 'web_search_20250305',
-        name: 'web_search',
-        max_uses: 5,
-      },
+        type: "web_search_20250305",
+        name: "web_search",
+        max_uses: 5
+      }
     ],
     messages: [
       {
-        role: 'user',
+        role: "user",
         content: [
           // Static block — cache_control breakpoint lets this prefix be served
           // from cache on subsequent calls. Sonnet 4.6 requires ≥2048 tokens
           // for a cache hit; check `cacheWrite`/`cacheRead` in the usage log
           // below to confirm threshold is being reached.
           {
-            type: 'text',
+            type: "text",
             text: STATIC_PROMPT,
-            cache_control: { type: 'ephemeral' },
+            cache_control: { type: "ephemeral" }
           },
           // Dynamic block — unique per request, always sent fresh.
           {
-            type: 'text',
-            text: buildDynamicTripDetails(input),
-          },
-        ],
-      },
-    ],
-  })
+            type: "text",
+            text: buildDynamicTripDetails(input)
+          }
+        ]
+      }
+    ]
+  });
 
   // Log token usage so cache effectiveness is visible in the Vite console.
-  console.log('[recommendations] usage:', {
+  console.log("[recommendations] usage:", {
     input: message.usage.input_tokens,
     output: message.usage.output_tokens,
-    cacheWrite: (message.usage as Record<string, number>).cache_creation_input_tokens ?? 0,
-    cacheRead: (message.usage as Record<string, number>).cache_read_input_tokens ?? 0,
-  })
+    cacheWrite:
+      (message.usage as unknown as Record<string, number>)
+        .cache_creation_input_tokens ?? 0,
+    cacheRead:
+      (message.usage as unknown as Record<string, number>)
+        .cache_read_input_tokens ?? 0
+  });
 
   const textBlocks = message.content
-    .filter((block: { type: string }) => block.type === 'text')
-    .map((block: { type: string; text?: string }) => block.text ?? '')
-    .join('\n')
+    .filter((block: { type: string }) => block.type === "text")
+    .map((block: { type: string; text?: string }) => block.text ?? "")
+    .join("\n");
 
   if (!textBlocks.trim()) {
-    throw new Error('Empty response from Claude. Try again.')
+    throw new Error("Empty response from Claude. Try again.");
   }
 
-  const jsonStr = extractJson(textBlocks)
-  const result = JSON.parse(jsonStr)
+  const jsonStr = extractJson(textBlocks);
+  const result = JSON.parse(jsonStr);
 
   // Populate response cache and persist to disk.
-  responseCache.set(cacheKey, { data: result, expiresAt: Date.now() + CACHE_TTL_MS })
-  saveCacheToDisk()
+  responseCache.set(cacheKey, {
+    data: result,
+    expiresAt: Date.now() + CACHE_TTL_MS
+  });
+  saveCacheToDisk();
 
-  return result
+  return result;
 }
 
 // ---------------------------------------------------------------------------
@@ -375,11 +459,11 @@ async function generateRecommendations(input: RecommendationInput) {
 
 function readBody(req: IncomingMessage): Promise<string> {
   return new Promise((resolve, reject) => {
-    const chunks: Buffer[] = []
-    req.on('data', (chunk) => chunks.push(chunk))
-    req.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')))
-    req.on('error', reject)
-  })
+    const chunks: Buffer[] = [];
+    req.on("data", (chunk) => chunks.push(chunk));
+    req.on("end", () => resolve(Buffer.concat(chunks).toString("utf8")));
+    req.on("error", reject);
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -388,65 +472,76 @@ function readBody(req: IncomingMessage): Promise<string> {
 
 export function recommendationsPlugin(): Plugin {
   return {
-    name: 'travel-recommendations',
+    name: "travel-recommendations",
     configureServer(server: ViteDevServer) {
-      server.middlewares.use('/api/exchange-rate', async (req: IncomingMessage, res: ServerResponse) => {
-        if (req.method !== 'POST') {
-          res.statusCode = 405
-          res.setHeader('Content-Type', 'application/json')
-          res.end(JSON.stringify({ error: 'Method not allowed' }))
-          return
-        }
-        try {
-          const rawBody = await readBody(req)
-          const body = JSON.parse(rawBody) as { from?: string; to?: string }
-          if (!body.from?.trim() || !body.to?.trim()) {
-            res.statusCode = 400
-            res.setHeader('Content-Type', 'application/json')
-            res.end(JSON.stringify({ error: 'from and to are required' }))
-            return
+      server.middlewares.use(
+        "/api/exchange-rate",
+        async (req: IncomingMessage, res: ServerResponse) => {
+          if (req.method !== "POST") {
+            res.statusCode = 405;
+            res.setHeader("Content-Type", "application/json");
+            res.end(JSON.stringify({ error: "Method not allowed" }));
+            return;
           }
-          const result = await generateExchangeRate(body.from.toUpperCase(), body.to.toUpperCase())
-          res.statusCode = 200
-          res.setHeader('Content-Type', 'application/json')
-          res.end(JSON.stringify(result))
-        } catch (err) {
-          const message = err instanceof Error ? err.message : 'Internal error'
-          console.error('[exchange-rate] error:', err)
-          res.statusCode = 500
-          res.setHeader('Content-Type', 'application/json')
-          res.end(JSON.stringify({ error: message }))
+          try {
+            const rawBody = await readBody(req);
+            const body = JSON.parse(rawBody) as { from?: string; to?: string };
+            if (!body.from?.trim() || !body.to?.trim()) {
+              res.statusCode = 400;
+              res.setHeader("Content-Type", "application/json");
+              res.end(JSON.stringify({ error: "from and to are required" }));
+              return;
+            }
+            const result = await generateExchangeRate(
+              body.from.toUpperCase(),
+              body.to.toUpperCase()
+            );
+            res.statusCode = 200;
+            res.setHeader("Content-Type", "application/json");
+            res.end(JSON.stringify(result));
+          } catch (err) {
+            const message =
+              err instanceof Error ? err.message : "Internal error";
+            console.error("[exchange-rate] error:", err);
+            res.statusCode = 500;
+            res.setHeader("Content-Type", "application/json");
+            res.end(JSON.stringify({ error: message }));
+          }
         }
-      })
+      );
 
-      server.middlewares.use('/api/recommendations', async (req: IncomingMessage, res: ServerResponse) => {
-        if (req.method !== 'POST') {
-          res.statusCode = 405
-          res.setHeader('Content-Type', 'application/json')
-          res.end(JSON.stringify({ error: 'Method not allowed' }))
-          return
-        }
-        try {
-          const rawBody = await readBody(req)
-          const body = JSON.parse(rawBody) as RecommendationInput
-          if (!body.destination?.trim()) {
-            res.statusCode = 400
-            res.setHeader('Content-Type', 'application/json')
-            res.end(JSON.stringify({ error: 'destination is required' }))
-            return
+      server.middlewares.use(
+        "/api/recommendations",
+        async (req: IncomingMessage, res: ServerResponse) => {
+          if (req.method !== "POST") {
+            res.statusCode = 405;
+            res.setHeader("Content-Type", "application/json");
+            res.end(JSON.stringify({ error: "Method not allowed" }));
+            return;
           }
-          const result = await generateRecommendations(body)
-          res.statusCode = 200
-          res.setHeader('Content-Type', 'application/json')
-          res.end(JSON.stringify(result))
-        } catch (err) {
-          const message = err instanceof Error ? err.message : 'Internal error'
-          console.error('[recommendations] error:', err)
-          res.statusCode = 500
-          res.setHeader('Content-Type', 'application/json')
-          res.end(JSON.stringify({ error: message }))
+          try {
+            const rawBody = await readBody(req);
+            const body = JSON.parse(rawBody) as RecommendationInput;
+            if (!body.destination?.trim()) {
+              res.statusCode = 400;
+              res.setHeader("Content-Type", "application/json");
+              res.end(JSON.stringify({ error: "destination is required" }));
+              return;
+            }
+            const result = await generateRecommendations(body);
+            res.statusCode = 200;
+            res.setHeader("Content-Type", "application/json");
+            res.end(JSON.stringify(result));
+          } catch (err) {
+            const message =
+              err instanceof Error ? err.message : "Internal error";
+            console.error("[recommendations] error:", err);
+            res.statusCode = 500;
+            res.setHeader("Content-Type", "application/json");
+            res.end(JSON.stringify({ error: message }));
+          }
         }
-      })
-    },
-  }
+      );
+    }
+  };
 }

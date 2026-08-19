@@ -4,7 +4,7 @@ import type { ThemeStyles } from '../styleFactory'
 import { styleTitleRow, styleSectionHeader, styleColumnHeader, styleDataRow } from '../styleFactory'
 import { THEMES } from '../../../types/theme'
 
-const DEFAULT_TASKS = [
+export const DEFAULT_TASKS = [
   { category: 'Documents', task: 'Renew passport (if expiring within 6 months)', priority: 'High' },
   { category: 'Documents', task: 'Apply for visa / entry permit', priority: 'High' },
   { category: 'Documents', task: 'Purchase travel insurance', priority: 'High' },

@@ -30,8 +30,8 @@ export function configureWorkbook(
 // the other way round silently fails to register the name, leaving every
 // TripStart-based formula (ITINERARY dates, OVERVIEW countdown) unresolved.
 export function addNamedRanges(wb: ExcelJS.Workbook): void {
-  wb.definedNames.add("'OVERVIEW'!$D$3", "TripStart");
-  wb.definedNames.add("'OVERVIEW'!$D$4", "TripEnd");
-  wb.definedNames.add("'OVERVIEW'!$D$9", "NumAdults");
-  wb.definedNames.add("'OVERVIEW'!$D$14", "TotalBudget");
+  wb.definedNames.add("'OVERVIEW'!$A$5", "TripStart");
+  wb.definedNames.add("'OVERVIEW'!$B$5", "TripEnd");
+  wb.definedNames.add("'OVERVIEW'!$C$7", "NumAdults");
+  wb.definedNames.add("'OVERVIEW'!$D$15", "TotalBudget");
 }
