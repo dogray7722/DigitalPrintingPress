@@ -4,8 +4,8 @@ import type { Recommendations, ExchangeRate } from '../recommendations/types'
 import { configureWorkbook, addNamedRanges } from './workbookConfig'
 import { getThemeStyles } from './styleFactory'
 import { injectChart, CHART_PALETTES } from './chartInjection'
-import type { ChartKind } from './chartInjection'
 import { injectCalcChain } from './calcChain'
+import { injectNativeHyperlinks } from './nativeHyperlinks'
 import { protectWorkbook } from './protection'
 import { buildOverviewSheet, categoryBudgetAmounts } from './sheets/overview'
 import { buildBudgetTrackerSheet } from './sheets/budgetTracker'
@@ -30,7 +30,7 @@ export async function generateWorkbook(
   configureWorkbook(wb, state)
 
   // OVERVIEW is always first and always included
-  buildOverviewSheet(wb, state, ts, exchangeRate)
+  buildOverviewSheet(wb, state, ts, exchangeRate, recommendations)
 
   // Optional sheets in logical order, with recommendations prefill
   if (state.sheets.itinerary) buildItinerarySheet(wb, state, ts, recommendations?.itinerary)
@@ -60,44 +60,65 @@ export async function generateWorkbook(
   let buffer: ArrayBuffer = (await wb.xlsx.writeBuffer()) as ArrayBuffer
 
   // ExcelJS can't write native charts — inject a real chart bound to the OVERVIEW
-  // budget table so it updates live as the user logs actual spending. Every chart
-  // style is now a native injected chart (bar / pie / donut).
-  const CHART_KIND: Record<WizardState['chartStyle'], ChartKind> = {
-    bar: 'bar',
-    pie: 'pie',
-    donut: 'doughnut',
-  }
+  // budget table so it updates live as the user logs actual spending. Always a
+  // stacked bar chart (spent / remaining / over-budget per category).
   // Cached data points for the chart series — must mirror what the referenced cells
   // hold at generation time (i.e. the cached formula results with empty trackers).
   // Without these, Excel's chart redraw runs one edit behind the cells.
   const cats = categoryBudgetAmounts(state)
 
   buffer = await injectChart(buffer, {
-    kind: CHART_KIND[state.chartStyle],
+    kind: 'bar',
     sheetName: 'OVERVIEW',
-    categoryRange: "'OVERVIEW'!$F$18:$F$23",
+    categoryRange: "'OVERVIEW'!$G$15:$G$20",
     categoryLabels: cats.map(c => c.key),
-    // bar: col N = MIN(actual, budget) = 0 with empty trackers.
-    // pie/donut: col M = IF(actual>0, actual, budget) = budget estimate.
-    values: state.chartStyle === 'bar' ? cats.map(() => 0) : cats.map(c => c.amount),
-    // bar only: col O = MAX(budget - actual, 0) = budget; col P = MAX(actual - budget, 0) = 0.
-    remainderValues: state.chartStyle === 'bar' ? cats.map(c => c.amount) : undefined,
-    overValues: state.chartStyle === 'bar' ? cats.map(() => 0) : undefined,
-    // bar: col N = MIN(actual, budget) — colored "spent" segment (base of the stacked bar).
-    // pie/donut: col M = actual or budget estimate fallback so chart is never empty.
-    valueRange: state.chartStyle === 'bar'
-      ? "'OVERVIEW'!$N$18:$N$23"
-      : "'OVERVIEW'!$M$18:$M$23",
-    // bar only: col O = MAX(budget - actual, 0) — light "remaining" segment stacked after
-    //   col N so each category is one bar whose length = budget.
-    remainderRange: state.chartStyle === 'bar' ? "'OVERVIEW'!$O$18:$O$23" : undefined,
-    // bar only: col P = MAX(actual - budget, 0) — solid red overage segment stacked after
-    //   col O, extending the bar past the budget length when a category is overspent.
-    overRange: state.chartStyle === 'bar' ? "'OVERVIEW'!$P$18:$P$23" : undefined,
-    anchor: { fromCol: 5, fromRow: 26, toCol: 11, toRow: 44 },
+    // col O = MIN(actual, budget) = 0 with empty trackers.
+    values: cats.map(() => 0),
+    // col P = MAX(budget - actual, 0) = budget; col Q = MAX(actual - budget, 0) = 0.
+    remainderValues: cats.map(c => c.amount),
+    overValues: cats.map(() => 0),
+    // col O = MIN(actual, budget) — colored "spent" segment (base of the stacked bar).
+    valueRange: "'OVERVIEW'!$O$15:$O$20",
+    // col P = MAX(budget - actual, 0) — light "remaining" segment stacked after
+    // col O so each category is one bar whose length = budget.
+    remainderRange: "'OVERVIEW'!$P$15:$P$20",
+    // col Q = MAX(actual - budget, 0) — solid red overage segment stacked after
+    // col P, extending the bar past the budget length when a category is overspent.
+    overRange: "'OVERVIEW'!$Q$15:$Q$20",
+    // G25:L36, directly under the in-cell "SPENT VS PLANNED" header at row 24.
+    anchor: { fromCol: 6, fromRow: 24, toCol: 12, toRow: 36 },
     colors: CHART_PALETTES[state.theme],
-    title: `${state.destination || 'Trip'} Budget Breakdown`,
+    // No chart-space title — overview.ts writes the header into F23:K23 instead, so it
+    // lines up with TRIP READINESS across the gutter and doesn't eat plot height.
   })
+
+  // Trip-readiness doughnut — ready vs. to-do across PACKING + TASKS. Fills the
+  // lower-left. The doughnut auto-labels category + percent (see chartInjection dLbls),
+  // so no center-cell label is needed. Skipped when neither source sheet exists.
+  if (state.sheets.packingList || state.sheets.tasks) {
+    buffer = await injectChart(buffer, {
+      kind: 'doughnut',
+      sheetName: 'OVERVIEW',
+      categoryRange: "'OVERVIEW'!$U$1:$U$2",
+      categoryLabels: ['Ready', 'To do'],
+      valueRange: "'OVERVIEW'!$T$1:$T$2", // T1 ready, T2 remaining
+      values: [0, 1], // fresh workbook = 0% ready
+      // toCol is EXCLUSIVE, so this frame spans columns B–E and rows 25–34 — the
+      // centered "% ready" overlay (overview.ts) is merged B29:E30 to match.
+      anchor: { fromCol: 1, fromRow: 24, toCol: 5, toRow: 34 },
+      colors: [ts.palette.secondary, ts.palette.mediumBg],
+      // No title/legend/per-slice labels — the "TRIP READINESS" heading and % are
+      // in-cell (overview.ts), floating over the doughnut's transparent hole.
+      legend: false,
+      dataLabels: false,
+    })
+  }
+
+  // ExcelJS writes internal (same-workbook) hyperlinks in a malformed shape that Excel
+  // treats as external and Google Sheets renders as "#gid=xxxx". Rewrite them the way
+  // Excel does. MUST run after injectChart: chart injection allocates its worksheet rel
+  // as maxRelId+1, and this pass deletes rels.
+  buffer = await injectNativeHyperlinks(buffer)
 
   // ExcelJS also never writes the calcChain part; without it Excel for Mac
   // repaints the injected chart one calculation behind the cells.

@@ -121,13 +121,32 @@ function assertUnprotected(sheetXml, sheetName) {
 {
   const xml = await loadSheetXml('OVERVIEW')
   assertProtected(xml, 'OVERVIEW')
-  assertUnlocked(xml, 'OVERVIEW', 'D3')
-  assertUnlocked(xml, 'OVERVIEW', 'D4')
-  assertUnlocked(xml, 'OVERVIEW', 'D9')
-  assertUnlocked(xml, 'OVERVIEW', 'D11')
-  assertUnlocked(xml, 'OVERVIEW', 'G18')
-  assertHidden(xml, 'OVERVIEW', 'D14')
-  assertHidden(xml, 'OVERVIEW', 'H18')
+  assertUnlocked(xml, 'OVERVIEW', 'B6') // TripStart
+  assertUnlocked(xml, 'OVERVIEW', 'D6') // TripEnd
+  assertUnlocked(xml, 'OVERVIEW', 'E9') // NumAdults
+  assertUnlocked(xml, 'OVERVIEW', 'B16') // Currency
+  assertUnlocked(xml, 'OVERVIEW', 'H15') // Estimated Budget, first category row
+  assertHidden(xml, 'OVERVIEW', 'D16') // TotalBudget
+  assertHidden(xml, 'OVERVIEW', 'I15') // Actual Spent, first category row
+}
+
+// ── ITINERARY — near-open: only the auto-Date column B stays locked ──────────
+{
+  const xml = await loadSheetXml('ITINERARY')
+  // <sheetProtection> must stay on: a cell's `locked` flag is inert without it.
+  assertProtected(xml, 'ITINERARY')
+  for (const col of ['A', 'C', 'D', 'E', 'F', 'G', 'H', 'I']) {
+    assertUnlocked(xml, 'ITINERARY', `${col}4`) // first data row
+    assertUnlocked(xml, 'ITINERARY', `${col}33`) // last data row (MAX_DAYS = 30)
+  }
+  assert(protectionOf(xml, 'B4').locked, 'ITINERARY!B4 (auto-Date) stays locked')
+  assert(protectionOf(xml, 'B33').locked, 'ITINERARY!B33 (auto-Date) stays locked')
+  assertHidden(xml, 'ITINERARY', 'B4')
+  // Sheet-level restrictions are relaxed so it behaves like an unprotected sheet.
+  const sp = /<sheetProtection[^>]*\/?>/.exec(xml)[0]
+  for (const attr of ['formatCells', 'formatRows', 'insertRows', 'deleteRows', 'sort']) {
+    assert(new RegExp(`${attr}="0"`).test(sp), `ITINERARY sheetProtection allows ${attr}`)
+  }
 }
 
 // ── TRANSPORTATION ───────────────────────────────────────────────────────────
@@ -205,7 +224,7 @@ try {
   const wb2 = new ExcelJS.Workbook()
   await wb2.xlsx.load(buffer)
   const ws2 = wb2.getWorksheet('OVERVIEW')
-  assert(ws2 && ws2.getCell('D3').value instanceof Date, 'ExcelJS re-opens protected workbook intact')
+  assert(ws2 && ws2.getCell('B6').value instanceof Date, 'ExcelJS re-opens protected workbook intact')
 } catch (e) {
   assert(false, 'ExcelJS re-open threw: ' + e.message)
 }

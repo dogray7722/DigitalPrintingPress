@@ -4,7 +4,11 @@ import type { ThemeStyles } from '../styleFactory'
 import type { RegionRec } from '../../recommendations/types'
 import { styleTitleRow, styleSectionHeader, styleColumnHeader, styleDataRow, styleTotalRow } from '../styleFactory'
 import { THEMES } from '../../../types/theme'
-import { buildRecommendationInsert } from './recommendationInsert'
+import {
+  buildRecommendationInsert,
+  buildRecommendationsLink,
+  reserveRecommendationsSlot,
+} from './recommendationInsert'
 
 export function buildExcursionsSheet(
   wb: ExcelJS.Workbook,
@@ -19,9 +23,12 @@ export function buildExcursionsSheet(
   ws.mergeCells('A1:J1')
   styleTitleRow(ws.getRow(1), ts)
 
+  // Description stops at H so I:J can carry the recommendations button — it still fits
+  // that span (A:H holds ~102 chars at the band's 13pt), so the copy is unchanged.
   ws.getCell('A2').value = 'Cost = Unit Cost (Per Group) or Unit Cost × # Travelers (Per Person). Select Cost Type per row.'
-  ws.mergeCells('A2:J2')
+  ws.mergeCells('A2:H2')
   styleSectionHeader(ws.getRow(2), ts)
+  reserveRecommendationsSlot(ws, ts, 'I2:J2')
 
   ws.getCell('A3').value = 'TOTAL ACTIVITIES COST'
   ws.getCell('A3').font = { name: ts.fontName, size: ts.sizes.header, bold: true }
@@ -123,8 +130,13 @@ export function buildExcursionsSheet(
   ws.getColumn('I').width = 25
   ws.getColumn('J').width = 35
 
-  // Informational AI guide below the tracker (TOTAL row is 36; leave a spacer)
-  buildRecommendationInsert(ws, totRow + 2, ts, regions, 'excursions')
+  // Informational AI guide below the tracker (TOTAL row is 36; leave a spacer). When it
+  // renders, light up the link slot at the end of the row 2 band — that row is inside the
+  // frozen pane, so the guide stays reachable however far down the tracker the user is.
+  const recRow = totRow + 2
+  if (buildRecommendationInsert(ws, recRow, ts, regions, 'excursions')) {
+    buildRecommendationsLink(ws, ts, 'I2', recRow)
+  }
 
   ws.views = [{ state: 'frozen', xSplit: 0, ySplit: 5, activeCell: 'A6' }]
 }

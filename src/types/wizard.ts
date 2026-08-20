@@ -11,7 +11,6 @@ export type SheetId =
 
 export type PartyType = 'solo' | 'couple' | 'family' | 'group'
 export type TripStyle = 'budget' | 'midrange' | 'luxury'
-export type ChartStyle = 'bar' | 'pie' | 'donut'
 export type FontFamily = 'sans' | 'serif' | 'mono'
 export type FontSize = 'small' | 'medium' | 'large'
 export type ThemeId = 'sakura' | 'ocean' | 'forest' | 'desert' | 'inkwell' | 'parchment'
@@ -27,13 +26,13 @@ export interface BudgetAmounts {
 }
 
 export interface OverviewImage {
-  /** Final baked crop, ready for Excel embed — 1400x648 JPEG data URL. */
+  /** Final baked crop, ready for Excel embed — 1400x756 JPEG data URL. */
   dataUrl: string
   /** Original uploaded image (untouched), used to recompute the crop on reposition. */
   sourceDataUrl: string
   sourceWidth: number
   sourceHeight: number
-  /** 0-1 vertical focal point within the available crop slack; 0.5 = center (default). 0 = top of source visible, 1 = bottom of source visible. Only meaningful when the source is taller than the 2.16:1 target ratio. */
+  /** 0-1 vertical focal point within the available crop slack; 0.5 = center (default). 0 = top of source visible, 1 = bottom of source visible. Only meaningful when the source is taller than the ~1.85:1 target ratio. */
   offsetY: number
 }
 
@@ -61,6 +60,22 @@ export const SHEET_LABELS: Record<SheetId, string> = {
   events: 'Annual Events',
 }
 
+// Emoji icon per sheet — shared by the Step 3 toggle grid and the OVERVIEW JUMP TO
+// strip, so the wizard and the generated workbook can't drift apart. Same family as
+// the 📍 pin on the AI recommendation guide tables: plain Unicode emoji, rendered by
+// the OS emoji font (no glyph exists in Calibri/Cambria/Courier New).
+export const SHEET_ICONS: Record<SheetId, string> = {
+  budgetTracker: '💰',
+  itinerary: '📅',
+  hotels: '🏨',
+  restaurants: '🍽️',
+  excursions: '🎯',
+  packingList: '🎒',
+  flights: '✈️',
+  tasks: '✅',
+  events: '🎉',
+}
+
 export interface WizardState {
   // Step 1
   destination: string
@@ -81,7 +96,6 @@ export interface WizardState {
   // Step 3
   theme: ThemeId
   accentColor: string
-  chartStyle: ChartStyle
   fontFamily: FontFamily
   fontSize: FontSize
   sheets: Record<SheetId, boolean>
@@ -115,7 +129,6 @@ export const DEFAULT_STATE: WizardState = {
 
   theme: 'sakura',
   accentColor: '',
-  chartStyle: 'bar',
   fontFamily: 'sans',
   fontSize: 'medium',
   sheets: {

@@ -67,6 +67,10 @@ export interface InjectChartOptions {
   remainderValues?: number[]
   /** Bar only — generation-time values of overRange (col P). */
   overValues?: number[]
+  /** Pie/doughnut only — show the right-side legend. Defaults to true. */
+  legend?: boolean
+  /** Pie/doughnut only — show per-slice category+percent labels. Defaults to true. */
+  dataLabels?: boolean
 }
 
 const C_NS = 'http://schemas.openxmlformats.org/drawingml/2006/chart'
@@ -289,18 +293,19 @@ function buildChartXml(opts: InjectChartOptions): string {
       `<c:varyColors val="1"/>` +
       `<c:ser><c:idx val="0"/><c:order val="0"/>` +
       dPts +
-      pieLbls +
+      (opts.dataLabels === false ? noLbls : pieLbls) +
       catRef +
       valRef +
       `</c:ser>` +
       sliceTail +
       `</c:${wrapper}>`
-    legend = `<c:legend><c:legendPos val="r"/><c:overlay val="0"/></c:legend>`
+    legend = opts.legend === false ? '' : `<c:legend><c:legendPos val="r"/><c:overlay val="0"/></c:legend>`
   }
 
   return (
     `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` +
     `<c:chartSpace xmlns:c="${C_NS}" xmlns:a="${A_NS}" xmlns:r="${R_NS}">` +
+    `<c:roundedCorners val="0"/>` +
     `<c:chart>` +
     title +
     `<c:plotArea><c:layout/>` +
@@ -310,6 +315,10 @@ function buildChartXml(opts: InjectChartOptions): string {
     // plotVisOnly=0 so the chart still plots its hidden helper column (col M).
     `<c:plotVisOnly val="0"/><c:dispBlanksAs val="gap"/>` +
     `</c:chart>` +
+    // Transparent chart space — no implicit white box behind the plot area. Needed so a
+    // doughnut's hollow center reveals the cell floating behind it (see the OVERVIEW
+    // trip-readiness ring's centered % label), and a nicer default for every chart.
+    `<c:spPr><a:noFill/><a:ln><a:noFill/></a:ln></c:spPr>` +
     `</c:chartSpace>`
   )
 }
@@ -321,11 +330,12 @@ function buildChartXml(opts: InjectChartOptions): string {
  * (inserted as a sibling before its closing </xdr:wsDr> — see injectChart's merge
  * branch).
  *
- * `cNvPr id="2"` only needs to be unique within the drawing part. The cover photo's
- * <xdr:pic> (written by ExcelJS, if present) uses id="1", so "2" is safe — revisit if a
- * second image is ever added to the same drawing.
+ * `cNvPr id` only needs to be unique within the drawing part. The cover photo's <xdr:pic>
+ * (written by ExcelJS, if present) uses id="1". Callers derive `frameId` from the
+ * chart's part index (`chartIdx + 1` in `injectChart`) so multiple injected charts
+ * sharing one drawing part never collide with each other or with the photo.
  */
-function buildChartAnchorXml(anchor: ChartAnchor, chartRelId: string): string {
+function buildChartAnchorXml(anchor: ChartAnchor, chartRelId: string, frameId = 2): string {
   return (
     `<xdr:twoCellAnchor>` +
     `<xdr:from><xdr:col>${anchor.fromCol}</xdr:col><xdr:colOff>0</xdr:colOff>` +
@@ -334,7 +344,7 @@ function buildChartAnchorXml(anchor: ChartAnchor, chartRelId: string): string {
     `<xdr:row>${anchor.toRow}</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:to>` +
     `<xdr:graphicFrame macro="">` +
     `<xdr:nvGraphicFramePr>` +
-    `<xdr:cNvPr id="2" name="Budget Chart"/><xdr:cNvGraphicFramePr/>` +
+    `<xdr:cNvPr id="${frameId}" name="Chart ${frameId}"/><xdr:cNvGraphicFramePr/>` +
     `</xdr:nvGraphicFramePr>` +
     `<xdr:xfrm><a:off x="0" y="0"/><a:ext cx="0" cy="0"/></xdr:xfrm>` +
     `<a:graphic><a:graphicData uri="${C_NS}">` +
@@ -350,11 +360,11 @@ function buildChartAnchorXml(anchor: ChartAnchor, chartRelId: string): string {
  * Wraps a single chart anchor fragment in a brand-new <xdr:wsDr> document. Used only
  * when the worksheet has no existing drawing part (i.e. no cover photo was embedded).
  */
-function buildDrawingXml(anchor: ChartAnchor, chartRelId: string): string {
+function buildDrawingXml(anchor: ChartAnchor, chartRelId: string, frameId = 2): string {
   return (
     `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` +
     `<xdr:wsDr xmlns:xdr="${XDR_NS}" xmlns:a="${A_NS}">` +
-    buildChartAnchorXml(anchor, chartRelId) +
+    buildChartAnchorXml(anchor, chartRelId, frameId) +
     `</xdr:wsDr>`
   )
 }
@@ -508,7 +518,7 @@ export async function injectChart(
     const chartRelId = `rId${maxRelId(existingDrawingRels) + 1}`
 
     // 2. Insert the chart's <xdr:twoCellAnchor> as a new sibling before </xdr:wsDr>.
-    const chartAnchorXml = buildChartAnchorXml(opts.anchor, chartRelId)
+    const chartAnchorXml = buildChartAnchorXml(opts.anchor, chartRelId, chartIdx + 1)
     zip.file(drawingPath, drawingXml.replace('</xdr:wsDr>', `${chartAnchorXml}</xdr:wsDr>`))
 
     // 3. Append the chart relationship into the existing drawing's rels (create if absent).
@@ -533,7 +543,7 @@ export async function injectChart(
     const drawingRelsFile = `xl/drawings/_rels/drawing${drawingIdx}.xml.rels`
 
     // 2. Drawing part (chart referenced via rId1, local to the drawing's rels).
-    zip.file(drawingFile, buildDrawingXml(opts.anchor, 'rId1'))
+    zip.file(drawingFile, buildDrawingXml(opts.anchor, 'rId1', chartIdx + 1))
 
     // 3. Drawing rels → chart.
     zip.file(drawingRelsFile, buildDrawingRelsXml('rId1', `../charts/chart${chartIdx}.xml`))

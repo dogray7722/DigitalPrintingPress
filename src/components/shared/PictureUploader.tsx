@@ -10,9 +10,11 @@ interface Props {
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024 // 10MB original upload
 const ACCEPTED_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif']
-// Target matches the OVERVIEW sheet's F3:K14 image anchor (~693x320px, ~2.16:1).
+// Target matches the OVERVIEW sheet's G1:L11 cover-photo anchor: G:L is 99 width units
+// (~693px) and rows 1–11 total 260pt (~347px), so ~2:1. A mismatch here stretches the
+// embedded photo, so this and the OVERVIEW row heights for rows 1–11 must change together.
 const TARGET_W = 1400
-const TARGET_H = 648
+const TARGET_H = 700
 const TARGET_RATIO = TARGET_W / TARGET_H
 const JPEG_QUALITY = 0.85
 const NUDGE_STEP = 0.1
@@ -41,7 +43,7 @@ function hasVerticalSlack(srcW: number, srcH: number): boolean {
   return srcW / srcH < TARGET_RATIO
 }
 
-// Crops the source image to the F3:K14 target aspect ratio at the given vertical focal
+// Crops the source image to the F1:K14 target aspect ratio at the given vertical focal
 // point, downscales to TARGET_W x TARGET_H, and re-encodes as JPEG so the embedded file
 // stays small and never gets stretched/distorted by ExcelJS's cell-range image anchor.
 function drawCrop(img: HTMLImageElement, offsetY: number): string {
@@ -151,7 +153,7 @@ export function PictureUploader({ value, onChange }: Props) {
         <img
           src={value.dataUrl}
           alt="Cover preview"
-          className="w-full aspect-[2.16/1] object-cover rounded-xl border border-gray-200"
+          className="w-full aspect-[1400/756] object-cover rounded-xl border border-gray-200"
         />
         <button
           type="button"

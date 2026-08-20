@@ -1,5 +1,5 @@
-// Verifies the OVERVIEW sheet's D11 currency dropdown: a list-type data validation
-// pointing at a hidden helper column (R) containing "CODE (symbol)" options.
+// Verifies the OVERVIEW sheet's B16 currency dropdown: a list-type data validation
+// pointing at a hidden helper column (S) containing "CODE (symbol)" options.
 // Run: node scripts/verify-currency-dropdown.mjs
 import { build } from 'esbuild'
 import ExcelJS from 'exceljs'
@@ -62,7 +62,15 @@ const state = {
 const ts = {
   fontName: 'Calibri',
   sizes: { title: 18, sectionHeader: 12, header: 12, data: 11 },
-  palette: { primary: 'FFE91E63', secondary: 'FFFCE4EC', lightBg: 'FFFFF5F7', mediumBg: 'FFFCE4EC' },
+  palette: {
+    primary: 'FFE91E63',
+    primaryText: 'FFFFFFFF',
+    secondary: 'FFFCE4EC',
+    secondaryText: 'FF2D1B6B',
+    lightBg: 'FFFFF5F7',
+    mediumBg: 'FFFCE4EC',
+    border: 'FFE0C8D0',
+  },
   numFmtCurrency: '"$"#,##0.00',
   numFmtDate: 'dd mmm yyyy',
   numFmtPercent: '0%',
@@ -72,34 +80,34 @@ const wb = new ExcelJS.Workbook()
 buildOverviewSheet(wb, state, ts)
 const ws = wb.getWorksheet('OVERVIEW')
 
-const d11 = ws.getCell('D11')
-assert(d11.value === 'USD ($)', `D11 initial value is "USD ($)" (got "${d11.value}")`)
+const currCell = ws.getCell('B16')
+assert(currCell.value === 'USD ($)', `B16 initial value is "USD ($)" (got "${currCell.value}")`)
 
-const dv = ws.dataValidations.find('D11')
-assert(!!dv, 'D11 has a data validation')
-assert(dv?.type === 'list', `D11 data validation type is "list" (got "${dv?.type}")`)
+const dv = ws.dataValidations.find('B16')
+assert(!!dv, 'B16 has a data validation')
+assert(dv?.type === 'list', `B16 data validation type is "list" (got "${dv?.type}")`)
 assert(
-  dv?.formulae?.[0] === `$R$1:$R${CURRENCIES.length}`,
-  `D11 data validation formula is "$R$1:$R${CURRENCIES.length}" (got "${dv?.formulae?.[0]}")`
+  dv?.formulae?.[0] === `$S$1:$S${CURRENCIES.length}`,
+  `B16 data validation formula is "$S$1:$S${CURRENCIES.length}" (got "${dv?.formulae?.[0]}")`
 )
 
 CURRENCIES.forEach((c, i) => {
-  const cell = ws.getCell(`R${i + 1}`)
+  const cell = ws.getCell(`S${i + 1}`)
   const expected = `${c.code} (${c.symbol})`
-  assert(cell.value === expected, `R${i + 1} = "${expected}" (got "${cell.value}")`)
+  assert(cell.value === expected, `S${i + 1} = "${expected}" (got "${cell.value}")`)
 })
 
-assert(ws.getColumn('R').hidden === true, 'Column R is hidden')
+assert(ws.getColumn('S').hidden === true, 'Column S is hidden')
 
 // Round-trip through a real xlsx buffer to make sure nothing corrupts on write.
 const buf = await wb.xlsx.writeBuffer()
 const wb2 = new ExcelJS.Workbook()
 await wb2.xlsx.load(buf)
 const ws2 = wb2.getWorksheet('OVERVIEW')
-const dv2 = ws2.dataValidations.find('D11')
-assert(dv2?.type === 'list', 'After round-trip: D11 still has a list data validation')
-assert(ws2.getCell('R1').value === 'USD ($)', 'After round-trip: R1 = "USD ($)"')
-assert(ws2.getColumn('R').hidden === true, 'After round-trip: column R is hidden')
+const dv2 = ws2.dataValidations.find('B16')
+assert(dv2?.type === 'list', 'After round-trip: B16 still has a list data validation')
+assert(ws2.getCell('S1').value === 'USD ($)', 'After round-trip: S1 = "USD ($)"')
+assert(ws2.getColumn('S').hidden === true, 'After round-trip: column S is hidden')
 
 if (process.exitCode) {
   console.error('\nSome checks failed.')

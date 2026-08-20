@@ -133,6 +133,33 @@ export function styleValueCell(cell: Cell, ts: ThemeStyles): void {
   cell.border = bottomBorder(ts.palette.border) as ExcelJS.Borders
 }
 
+// ── Contrast ─────────────────────────────────────────────────────────────────
+// Themes vary enough that a color pair which sings on one is illegible on another, so
+// any "accent text on a themed fill" choice needs checking rather than eyeballing
+// against a single theme. WCAG relative luminance; ARGB in, ratio 1–21 out.
+
+function relativeLuminance(argb: string): number {
+  const channel = (hex: string): number => {
+    const c = parseInt(hex, 16) / 255
+    return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4)
+  }
+  // Skip the leading alpha pair.
+  const r = channel(argb.slice(2, 4))
+  const g = channel(argb.slice(4, 6))
+  const b = channel(argb.slice(6, 8))
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b
+}
+
+/** WCAG contrast ratio between two ARGB colors. 1 = identical, 21 = black on white. */
+export function contrastRatio(argbA: string, argbB: string): number {
+  const [hi, lo] = [relativeLuminance(argbA), relativeLuminance(argbB)].sort((x, y) => y - x)
+  return (hi + 0.05) / (lo + 0.05)
+}
+
+/** WCAG AA for normal-size text. Bold display text can be argued down to 3, but the
+ *  themes here cluster well above or well below 4.5, so the stricter bar costs nothing. */
+export const AA_CONTRAST = 4.5
+
 // ── Text-fitting helpers ─────────────────────────────────────────────────────
 // ExcelJS has no real autofit, and Excel desktop won't auto-grow MERGED cells, so
 // for wrapped AI text we estimate how many lines it needs and set an explicit row
