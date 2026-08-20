@@ -69,7 +69,7 @@ export async function generateWorkbook(
   buffer = await injectChart(buffer, {
     kind: 'bar',
     sheetName: 'OVERVIEW',
-    categoryRange: "'OVERVIEW'!$F$18:$F$23",
+    categoryRange: "'OVERVIEW'!$F$15:$F$20",
     categoryLabels: cats.map(c => c.key),
     // col N = MIN(actual, budget) = 0 with empty trackers.
     values: cats.map(() => 0),
@@ -77,16 +77,18 @@ export async function generateWorkbook(
     remainderValues: cats.map(c => c.amount),
     overValues: cats.map(() => 0),
     // col N = MIN(actual, budget) — colored "spent" segment (base of the stacked bar).
-    valueRange: "'OVERVIEW'!$N$18:$N$23",
+    valueRange: "'OVERVIEW'!$N$15:$N$20",
     // col O = MAX(budget - actual, 0) — light "remaining" segment stacked after
     // col N so each category is one bar whose length = budget.
-    remainderRange: "'OVERVIEW'!$O$18:$O$23",
+    remainderRange: "'OVERVIEW'!$O$15:$O$20",
     // col P = MAX(actual - budget, 0) — solid red overage segment stacked after
     // col O, extending the bar past the budget length when a category is overspent.
-    overRange: "'OVERVIEW'!$P$18:$P$23",
-    anchor: { fromCol: 5, fromRow: 26, toCol: 11, toRow: 44 },
+    overRange: "'OVERVIEW'!$P$15:$P$20",
+    // F24:K35, directly under the in-cell "SPENT VS PLANNED" header at row 23.
+    anchor: { fromCol: 5, fromRow: 23, toCol: 11, toRow: 35 },
     colors: CHART_PALETTES[state.theme],
-    title: `${state.destination || 'Trip'} Budget Breakdown`,
+    // No chart-space title — overview.ts writes the header into F23:K23 instead, so it
+    // lines up with TRIP READINESS across the gutter and doesn't eat plot height.
   })
 
   // Trip-readiness doughnut — ready vs. to-do across PACKING + TASKS. Fills the
@@ -100,7 +102,9 @@ export async function generateWorkbook(
       categoryLabels: ['Ready', 'To do'],
       valueRange: "'OVERVIEW'!$S$1:$S$2", // S1 ready, S2 remaining
       values: [0, 1], // fresh workbook = 0% ready
-      anchor: { fromCol: 0, fromRow: 23, toCol: 4, toRow: 39 }, // A24:E40
+      // toCol is EXCLUSIVE, so this frame spans columns A–D and rows 24–33 — the
+      // centered "% ready" overlay (overview.ts) is merged A28:D29 to match.
+      anchor: { fromCol: 0, fromRow: 23, toCol: 4, toRow: 33 },
       colors: [ts.palette.secondary, ts.palette.mediumBg],
       // No title/legend/per-slice labels — the "TRIP READINESS" heading and % are
       // in-cell (overview.ts), floating over the doughnut's transparent hole.

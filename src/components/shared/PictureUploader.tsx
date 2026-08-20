@@ -10,9 +10,12 @@ interface Props {
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024 // 10MB original upload
 const ACCEPTED_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif']
-// Target matches the OVERVIEW sheet's F1:K14 hero-band image anchor (~693x373px, ~1.85:1).
+// Target matches the OVERVIEW sheet's F1:K11 cover-photo anchor: F:K is 99 width units
+// (~693px) and rows 1–11 total 198pt (~264px), so ~2.63:1. The anchor was shortened from
+// row 14 to row 11 to give the BUDGET SUMMARY band a gutter; a mismatch here stretches
+// the embedded photo, so these two must be changed together.
 const TARGET_W = 1400
-const TARGET_H = 756
+const TARGET_H = 533
 const TARGET_RATIO = TARGET_W / TARGET_H
 const JPEG_QUALITY = 0.85
 const NUDGE_STEP = 0.1

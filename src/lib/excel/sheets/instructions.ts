@@ -155,7 +155,7 @@ export function buildInstructionsSheet(
   bodyLine("Google Sheets — Date Picker");
   row++;
   bulletLine(
-    "OVERVIEW Trip Start (D3) and Trip End (D4): double-click to open the date picker calendar."
+    "OVERVIEW Start Date (A6) and End Date (C6): double-click to open the date picker calendar."
   );
   row++;
   bulletLine(
@@ -356,7 +356,7 @@ export function buildInstructionsSheet(
   sectionHeader("6.  CHANGING CURRENCY SYMBOLS");
   row++;
   bodyLine(
-    "The Currency dropdown on OVERVIEW (D11) is for reference only. Number formats — the $, €, £, etc. shown in Estimated Budget, Actual Spent, Remaining, and every other cost column — are fixed when this workbook is generated and can't follow a dropdown or formula."
+    "The Currency dropdown on OVERVIEW (A16) is for reference only. Number formats — the $, €, £, etc. shown in Estimated Budget, Actual Spent, Remaining, and every other cost column — are fixed when this workbook is generated and can't follow a dropdown or formula."
   );
   row++;
   bodyLine("To change the symbol on a column or group of cells yourself:");
@@ -391,25 +391,25 @@ export function buildInstructionsSheet(
   const namedRanges = [
     {
       name: "TripStart",
-      location: "A5",
+      location: "A6",
       description:
         "Trip start date. Drives ITINERARY auto-dates and all date formulas."
     },
     {
       name: "TripEnd",
-      location: "B5",
+      location: "C6",
       description:
         "Trip end date. Controls how many ITINERARY day rows are visible."
     },
     {
       name: "NumAdults",
-      location: "C7",
+      location: "D9",
       description:
         "Number of travelers. Used in per-person budget/excursion calculations."
     },
     {
       name: "TotalBudget",
-      location: "D15",
+      location: "C16",
       description:
         "Total estimated budget (sum of the Budget Summary Estimated Budget column)."
     }

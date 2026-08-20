@@ -1,4 +1,4 @@
-// Verifies the OVERVIEW sheet's B15 currency dropdown: a list-type data validation
+// Verifies the OVERVIEW sheet's A16 currency dropdown: a list-type data validation
 // pointing at a hidden helper column (R) containing "CODE (symbol)" options.
 // Run: node scripts/verify-currency-dropdown.mjs
 import { build } from 'esbuild'
@@ -80,15 +80,15 @@ const wb = new ExcelJS.Workbook()
 buildOverviewSheet(wb, state, ts)
 const ws = wb.getWorksheet('OVERVIEW')
 
-const b15 = ws.getCell('B15')
-assert(b15.value === 'USD ($)', `B15 initial value is "USD ($)" (got "${b15.value}")`)
+const currCell = ws.getCell('A16')
+assert(currCell.value === 'USD ($)', `A16 initial value is "USD ($)" (got "${currCell.value}")`)
 
-const dv = ws.dataValidations.find('B15')
-assert(!!dv, 'B15 has a data validation')
-assert(dv?.type === 'list', `B15 data validation type is "list" (got "${dv?.type}")`)
+const dv = ws.dataValidations.find('A16')
+assert(!!dv, 'A16 has a data validation')
+assert(dv?.type === 'list', `A16 data validation type is "list" (got "${dv?.type}")`)
 assert(
   dv?.formulae?.[0] === `$R$1:$R${CURRENCIES.length}`,
-  `B15 data validation formula is "$R$1:$R${CURRENCIES.length}" (got "${dv?.formulae?.[0]}")`
+  `A16 data validation formula is "$R$1:$R${CURRENCIES.length}" (got "${dv?.formulae?.[0]}")`
 )
 
 CURRENCIES.forEach((c, i) => {
@@ -104,8 +104,8 @@ const buf = await wb.xlsx.writeBuffer()
 const wb2 = new ExcelJS.Workbook()
 await wb2.xlsx.load(buf)
 const ws2 = wb2.getWorksheet('OVERVIEW')
-const dv2 = ws2.dataValidations.find('B15')
-assert(dv2?.type === 'list', 'After round-trip: B15 still has a list data validation')
+const dv2 = ws2.dataValidations.find('A16')
+assert(dv2?.type === 'list', 'After round-trip: A16 still has a list data validation')
 assert(ws2.getCell('R1').value === 'USD ($)', 'After round-trip: R1 = "USD ($)"')
 assert(ws2.getColumn('R').hidden === true, 'After round-trip: column R is hidden')
 

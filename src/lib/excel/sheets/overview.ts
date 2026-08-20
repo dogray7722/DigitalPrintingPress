@@ -4,10 +4,7 @@ import { SHEET_ICONS } from '../../../types/wizard'
 import type { ThemeStyles } from '../styleFactory'
 import type { ExchangeRate, Recommendations } from '../../recommendations/types'
 import {
-  styleColumnHeader,
-  styleDataRow,
   styleDataCell,
-  styleTotalRow,
   styleLabelCell,
   styleValueCell,
   truncate,
@@ -29,7 +26,7 @@ const BUDGET_CATEGORIES = [
   { key: 'Miscellaneous', budget: 'misc', perTrip: false },
 ] as const
 
-// Per-category estimated budget amounts, in Budget Summary (F18:F23) row order.
+// Per-category estimated budget amounts, in Budget Summary (F15:F20) row order.
 // Used to seed the table's Estimated Budget column AND the injected chart's cached
 // data points (index.ts) — the two must agree or the chart renders stale numbers.
 export function categoryBudgetAmounts(
@@ -267,8 +264,8 @@ function buildReadinessHelpers(ws: ExcelJS.Worksheet, ts: ThemeStyles, state: Wi
 
   // "TRIP READINESS" section header. The chart itself (index.ts) carries no title/legend
   // so its plot area — and the doughnut's hole — stays centered in its anchor for the
-  // label overlay below. Row 23 is shared with the Budget Summary's last data row
-  // (F23:K23), so style only A:D and leave the row height alone.
+  // label overlay below. Row 23 is shared with the right column's "SPENT VS PLANNED"
+  // header (F23:K23), so style only A:D; the height is set with the right column.
   ws.getCell('A23').value = 'TRIP READINESS'
   ws.mergeCells('A23:D23')
   styleSectionHeaderCells(ws, ts, 23, LEFT_COLS)
@@ -276,44 +273,56 @@ function buildReadinessHelpers(ws: ExcelJS.Worksheet, ts: ThemeStyles, state: Wi
   // Centered "% ready" label floated over the doughnut's transparent hole.
   //
   // The overlay must be centered on the CHART FRAME, not eyeballed: the frame is anchored
-  // A24:E40 (index.ts) whose `toCol: 4` is an exclusive right edge, so it spans columns
-  // A–D only. Merging A31:D32 therefore spans exactly the frame's width, putting the
+  // A24:D33 (index.ts) whose `toCol: 4` is an exclusive right edge, so it spans columns
+  // A–D only. Merging A28:D29 therefore spans exactly the frame's width, putting the
   // merged cell's center on the frame's center — and, with no title/legend to offset the
-  // plot area, on the doughnut hole's center. (Merging B31:D32 instead lands ~6 width
-  // units right of center, which pushes the text under the ring.) Vertically, rows 24–39
-  // total ~238pt (row 24 = 20pt total row, row 25 = 8pt spacer, rest default 15pt) so the
-  // frame's mid-line at ~119pt falls on the 31/32 boundary — the center of a 31:32 merge.
-  // Keep this arithmetic in sync with the anchor and the A–D column widths below.
-  const pctCell = ws.getCell('A31')
+  // plot area, on the doughnut hole's center. (Merging B28:D29 instead lands ~6 width
+  // units right of center, which pushes the text under the ring.) Vertically, rows 24–33
+  // are all RING_ROW_H (18pt) = 180pt, so the frame's mid-line at 90pt falls exactly on
+  // the 28/29 boundary — the center of a 28:29 merge. Keep this arithmetic in sync with
+  // the anchor, RING_ROW_H, and the A–D column widths.
+  const pctCell = ws.getCell('A28')
   pctCell.value = { formula: 'IFERROR(TEXT(S1/S3,"0%"),"0%")', result: '0%' }
   pctCell.protection = { hidden: true }
-  ws.mergeCells('A31:D32')
+  ws.mergeCells('A28:D29')
   pctCell.font = { name: ts.fontName, size: ts.sizes.title, bold: true, color: { argb: ts.palette.secondaryText } }
   pctCell.alignment = { vertical: 'middle', horizontal: 'center' }
 
-  const readyCaption = ws.getCell('A33')
+  const readyCaption = ws.getCell('A30')
   readyCaption.value = 'ready'
-  ws.mergeCells('A33:D33')
+  ws.mergeCells('A30:D30')
   readyCaption.font = { name: ts.fontName, size: ts.sizes.data, color: { argb: ts.palette.secondaryText } }
   readyCaption.alignment = { vertical: 'top', horizontal: 'center' }
 
-  // Count caption BELOW the frame (row 40 — the anchor's `toRow: 39` ends at the top of
-  // row 40). A freshly generated workbook is always 0% ready, so the ring alone is a
+  // Count caption BELOW the frame (row 34 — the anchor's `toRow: 33` ends at the top of
+  // row 34). A freshly generated workbook is always 0% ready, so the ring alone is a
   // featureless single-color circle; the counts make it read as a tracker at zero rather
   // than a failed render.
-  const countCaption = ws.getCell('A40')
+  const countCaption = ws.getCell('A34')
   countCaption.value = {
     formula: 'IFERROR(S1&" of "&S3&" items complete","")',
     result: `0 of ${total} items complete`,
   }
   countCaption.protection = { hidden: true }
-  ws.mergeCells('A40:D40')
+  ws.mergeCells('A34:D34')
   countCaption.font = { name: ts.fontName, size: ts.sizes.data, italic: true }
   countCaption.alignment = { vertical: 'middle', horizontal: 'center' }
 }
 
 // Neighborhood guide from recommendations.regions (same data hotels/dining/excursions use).
-// region.region + region.description drop straight into cells. Returns the next free row.
+// Each region takes TWO full-width rows — a bold name row over a muted description row.
+// The old one-row form put the name in the 20-wide F column with the description merged
+// across G:K beside it, so any name longer than ~18 chars ran into (and was clipped by)
+// its own description. Stacking them gives both the full F:K width.
+//
+// These rows share row numbers with the quick-nav link strip in A:D (both blocks start
+// at BOTTOM_BLOCK_ROW + 1), so every row here is BOTTOM_ROW_H — an uneven right column
+// would show through as a ragged left one. Descriptions are therefore capped to a single
+// line at the merged width rather than given a taller wrapped row.
+const BOTTOM_ROW_H = 20
+// F:K merged width in width-units (20+20+16+16+11+16); ~0.95 chars per unit at data size.
+const NEIGHBORHOOD_DESC_CHARS = 92
+
 function buildNeighborhoodGuide(
   ws: ExcelJS.Worksheet,
   ts: ThemeStyles,
@@ -326,13 +335,24 @@ function buildNeighborhoodGuide(
   styleSectionHeaderCells(ws, ts, startRow, RIGHT_COLS)
   let r = startRow + 1
   regions.slice(0, 5).forEach((region, i) => {
+    // Name row — full width, bold.
     styleDataRowCells(ws, ts, r, RIGHT_COLS, i % 2 === 0)
-    ws.getCell(`F${r}`).value = region.region
-    ws.getCell(`F${r}`).font = { name: ts.fontName, size: ts.sizes.header, bold: true }
-    ws.getCell(`G${r}`).value = region.description ?? ''
-    ws.mergeCells(`G${r}:K${r}`)
-    ws.getCell(`G${r}`).alignment = { wrapText: true, vertical: 'middle', horizontal: 'left' }
-    ws.getRow(r).height = 26
+    const nameCell = ws.getCell(`F${r}`)
+    nameCell.value = region.region
+    nameCell.font = { name: ts.fontName, size: ts.sizes.header, bold: true }
+    nameCell.alignment = { vertical: 'middle', horizontal: 'left' }
+    ws.mergeCells(`F${r}:K${r}`)
+    ws.getRow(r).height = BOTTOM_ROW_H
+    r++
+
+    // Description row — same stripe, muted, directly beneath its name.
+    styleDataRowCells(ws, ts, r, RIGHT_COLS, i % 2 === 0)
+    const descCell = ws.getCell(`F${r}`)
+    descCell.value = truncate(region.description ?? '', NEIGHBORHOOD_DESC_CHARS)
+    descCell.font = { name: ts.fontName, size: ts.sizes.data, italic: true }
+    descCell.alignment = { wrapText: true, vertical: 'middle', horizontal: 'left' }
+    ws.mergeCells(`F${r}:K${r}`)
+    ws.getRow(r).height = BOTTOM_ROW_H
     r++
   })
   return r + 1
@@ -373,6 +393,45 @@ function styleDataRowCells(
   isEven: boolean
 ): void {
   cols.forEach((col) => styleDataCell(ws.getCell(`${col}${row}`), ts, isEven))
+}
+
+// Column-scoped twins of styleFactory's styleColumnHeader / styleTotalRow. The Budget
+// Summary table now shares rows 14–21 with the left column's CURRENCY / TOTAL BUDGET
+// card and the currency-exchange widget, so the row-level helpers would restyle those.
+function styleColumnHeaderCells(
+  ws: ExcelJS.Worksheet,
+  ts: ThemeStyles,
+  row: number,
+  cols: readonly string[]
+): void {
+  const side = { style: 'thin' as const, color: { argb: ts.palette.border } }
+  cols.forEach((col) => {
+    const cell = ws.getCell(`${col}${row}`)
+    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: ts.palette.secondary } } as ExcelJS.Fill
+    cell.font = {
+      name: ts.fontName,
+      size: ts.sizes.header,
+      bold: true,
+      color: { argb: ts.palette.secondaryText },
+    }
+    cell.alignment = { vertical: 'middle', horizontal: 'center' }
+    cell.border = { top: side, bottom: side, left: side, right: side }
+  })
+}
+
+function styleTotalRowCells(
+  ws: ExcelJS.Worksheet,
+  ts: ThemeStyles,
+  row: number,
+  cols: readonly string[]
+): void {
+  const side = { style: 'thin' as const, color: { argb: ts.palette.border } }
+  cols.forEach((col) => {
+    const cell = ws.getCell(`${col}${row}`)
+    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: ts.palette.mediumBg } } as ExcelJS.Fill
+    cell.font = { name: ts.fontName, size: ts.sizes.header, bold: true }
+    cell.border = { top: side, bottom: side, left: side, right: side }
+  })
 }
 
 // Embeds a base64 data-URL image (JPEG or PNG) into the sheet at the given cell range.
@@ -420,7 +479,7 @@ function buildQuickNav(ws: ExcelJS.Worksheet, state: WizardState, ts: ThemeStyle
     cell.value = { formula: `HYPERLINK("#'${sheet}'!A1","${text}")`, result: text }
     cell.font = { name: ts.fontName, size: ts.sizes.data, bold: true, color: { argb: ts.palette.primary } }
     ws.mergeCells(`A${r}:D${r}`)
-    ws.getRow(r).height = 20
+    ws.getRow(r).height = BOTTOM_ROW_H
     r++
   })
   return r
@@ -442,6 +501,64 @@ export function buildOverviewSheet(
   const totalBudget = computeTotalBudget(state.budgets, state.duration)
   const currSym = getCurrencySymbol(state.currency)
 
+  // The currency-exchange widget occupies A17:D22 when it's built (skipped when source
+  // and target currency match). Row 22 is otherwise just a gutter above the row-23
+  // header band, so it only needs full height when the widget's last row lands there.
+  const hasCurrencyWidget = !!(exchangeRate && exchangeRate.from !== exchangeRate.to)
+
+  // ── Row heights ─────────────────────────────────────────────────────────────
+  // OVERVIEW stacks two INDEPENDENT columns of content (the A:D card stack and the F:K
+  // cards) that nonetheless SHARE row numbers, so every height here is the resolution of
+  // both sides' needs — set them in one place rather than letting each block set its own,
+  // or one side silently squashes the other.
+  //
+  // The left column is a stack of label/value cards: a short label row, a taller value
+  // row, a thin gutter, repeat. The right column is the cover photo, the Budget Summary
+  // table, the spend chart and the neighborhood guide. Section headers are deliberately
+  // LEVEL across the E gutter — row 13 (BUDGET SUMMARY), row 23 (TRIP READINESS |
+  // SPENT VS PLANNED), row 37 (JUMP TO | WHERE TO BASE YOURSELF) — which is what gives
+  // the sheet a horizontal rhythm instead of two independently drifting columns.
+  //
+  // RING_ROW_H is load-bearing: it sets the readiness doughnut's frame height (rows
+  // 24–33 = 180pt), and the centered "% ready" overlay in buildReadinessHelpers is
+  // merged across the row pair straddling that frame's mid-line. Changing it means
+  // re-deriving that merge.
+  const RING_ROW_H = 18
+  const rowHeights: Record<number, number> = {
+    1: 20, // hero panel top padding | cover photo
+    2: 20,
+    3: 20, // destination headline (A2:D3)
+    4: 6, // gutter
+    5: 16, // labels: START DATE | END DATE
+    6: 24, // values: TripStart | TripEnd
+    7: 8, // gutter
+    8: 16, // labels: DAYS | PARTY | TRAVELERS
+    9: 24, // values
+    10: 10, // gutter
+    11: 34,
+    12: 34, // countdown number (A11:D12)
+    13: 22, // "DAYS TO GO" caption | BUDGET SUMMARY header
+    14: 20, // hero panel bottom padding | Budget Summary column headers
+    15: 20, // labels: CURRENCY | TOTAL BUDGET ‖ budget category rows 15–20
+    16: 20, // values: currency | TotalBudget
+    17: 20, // currency-exchange widget starts here (A17:D22)
+    18: 20,
+    19: 20,
+    20: 20,
+    21: 20, // Budget Summary TOTAL row
+    22: hasCurrencyWidget ? 18 : 8, // gutter (or the widget's last row)
+    23: 22, // TRIP READINESS | SPENT VS PLANNED headers
+    34: 20, // "N of M items complete" caption, just below the ring frame
+    35: RING_ROW_H, // last row of the spend chart frame
+    36: 8, // gutter
+    37: 22, // JUMP TO | WHERE TO BASE YOURSELF headers
+  }
+  // Rows 24–33: readiness doughnut (A:D) beside the spend chart (F:K, which runs to 35).
+  for (let r = 24; r <= 33; r++) rowHeights[r] = RING_ROW_H
+  Object.entries(rowHeights).forEach(([r, h]) => {
+    ws.getRow(Number(r)).height = h
+  })
+
   // ── Hero band (rows 1–14): dark text panel (A:D) beside the cover photo (F:K) ──
   // Excel can't truly composite editable cell text on top of an opaque floating image
   // (drawings always render above the grid, unlike CSS layering), so the destination/
@@ -449,20 +566,31 @@ export function buildOverviewSheet(
   // is a deliberately empty, unfilled spacer separating the two so they don't butt
   // together.
   //
-  // Every value here is one cell wide — NO dedicated separator columns. A narrow
-  // separator column would be shared by every other A:D block down the sheet (the
-  // currency strip, quick-nav, the readiness ring) and is what made row 15's labels
-  // clip. Punctuation that belongs to a value is folded into that value's number format
-  // instead (e.g. the date range's en dash), which keeps the cell a genuinely editable
-  // raw date/number while displaying the decoration.
-  for (let r = 1; r <= 14; r++) ws.getRow(r).height = 20
+  // Each card is a LABEL row over a VALUE row, both merged across whole columns. The
+  // labels are what let the values be plain, genuinely editable raw dates/numbers: an
+  // earlier pass had no captions at all and folded the punctuation into each value's
+  // number format ("–  "mmm d, "0 days") to compensate, which read as guesswork.
   const heroFill = { type: 'pattern', pattern: 'solid', fgColor: { argb: ts.palette.primary } } as ExcelJS.Fill
   const heroFont = (size: number, bold = true) =>
     ({ name: ts.fontName, size, bold, color: { argb: ts.palette.primaryText } }) as ExcelJS.Font
+  // Caption style inside the panel: the light label/value pair used lower down (rows
+  // 15–16) can't be reused here — its lightBg fill would punch holes in the dark band —
+  // so it's the same small/bold treatment in the panel's own foreground color.
+  const heroLabelFont = { name: ts.fontName, size: ts.sizes.data, bold: true, color: { argb: ts.palette.primaryText } } as ExcelJS.Font
   for (let r = 1; r <= 14; r++) {
     LEFT_COLS.forEach((col) => {
       ws.getCell(`${col}${r}`).fill = heroFill
     })
+  }
+
+  // Label + value card inside the hero panel. `span` is the merge range suffix pair.
+  const heroLabel = (range: string, text: string): void => {
+    const anchor = range.split(':')[0]
+    const cell = ws.getCell(anchor)
+    cell.value = text
+    cell.font = heroLabelFont
+    cell.alignment = { vertical: 'middle', horizontal: 'left', indent: 1 }
+    if (range.includes(':')) ws.mergeCells(range)
   }
 
   // Destination headline. Long names step down a size rather than clipping — the panel
@@ -474,64 +602,74 @@ export function buildOverviewSheet(
   headline.font = heroFont(headlineText.length > 18 ? Math.round(ts.sizes.title * 0.72) : ts.sizes.title)
   headline.alignment = { vertical: 'middle', horizontal: 'left', indent: 1 }
 
-  // Row 5 = date line ("Sep 6  –  Sep 11, 2027"). Two independently-editable date cells;
-  // the en dash lives in B5's number format so no separator cell is needed. Both dates
-  // carry the month so a range spanning two months still reads correctly.
+  // ── Rows 5–6: date card ─────────────────────────────────────────────────────
+  // Two independently-editable date cells, each captioned and merged across half the
+  // panel. Both carry the year so a range spanning a year boundary still reads correctly.
   const dateFont = heroFont(Math.round(ts.sizes.title * 0.65))
 
-  // A5 = TripStart (named range anchor) — user-editable
-  const a5 = ws.getCell('A5')
-  a5.value = startDate
-  a5.numFmt = 'mmm d'
-  a5.protection = { locked: false }
-  a5.font = dateFont
-  a5.alignment = { vertical: 'middle', horizontal: 'left', indent: 1 }
+  heroLabel('A5:B5', 'START DATE')
+  heroLabel('C5:D5', 'END DATE')
 
-  // B5 = TripEnd (named range anchor) — user-editable
-  const b5 = ws.getCell('B5')
-  b5.value = endDate
-  b5.numFmt = '"–  "mmm d, yyyy'
-  b5.protection = { locked: false }
-  b5.font = dateFont
-  b5.alignment = { vertical: 'middle', horizontal: 'left' }
+  // A6 = TripStart (named range anchor) — user-editable
+  const tripStartCell = ws.getCell('A6')
+  tripStartCell.value = startDate
+  tripStartCell.numFmt = 'mmm d, yyyy'
+  tripStartCell.protection = { locked: false }
+  tripStartCell.font = dateFont
+  tripStartCell.alignment = { vertical: 'middle', horizontal: 'left', indent: 1 }
+  ws.mergeCells('A6:B6')
 
-  // Row 7: "7 days   Couple   2 travelers" — duration is derived, party type and
-  // travelers stay editable. The numFmt-suffix trick (`0" days"` / `0" travelers"`)
-  // keeps A7/C7 genuinely editable raw numbers while displaying inline captions, so
-  // nothing needs a separate label cell.
+  // C6 = TripEnd (named range anchor) — user-editable
+  const tripEndCell = ws.getCell('C6')
+  tripEndCell.value = endDate
+  tripEndCell.numFmt = 'mmm d, yyyy'
+  tripEndCell.protection = { locked: false }
+  tripEndCell.font = dateFont
+  tripEndCell.alignment = { vertical: 'middle', horizontal: 'left', indent: 1 }
+  ws.mergeCells('C6:D6')
+
+  // ── Rows 8–9: trip-shape card ───────────────────────────────────────────────
+  // Duration is derived (inclusive day count, not nights — TripEnd-TripStart+1); party
+  // type and traveler count stay editable.
   const lineFont = heroFont(ts.sizes.header)
 
-  const a7 = ws.getCell('A7')
-  a7.value = { formula: 'IFERROR(B5-A5+1,"")', result: state.duration }
-  a7.numFmt = '0" days"'
-  a7.protection = { hidden: true }
-  a7.font = lineFont
-  a7.alignment = { vertical: 'middle', horizontal: 'left', indent: 1 }
+  heroLabel('A8', 'DAYS')
+  heroLabel('B8:C8', 'PARTY')
+  heroLabel('D8', 'TRAVELERS')
 
-  const b7 = ws.getCell('B7')
-  b7.value = state.partyType.charAt(0).toUpperCase() + state.partyType.slice(1)
-  b7.protection = { locked: false }
-  b7.font = lineFont
-  b7.alignment = { vertical: 'middle', horizontal: 'left' }
-  ;(ws as any).dataValidations.add('B7', {
+  const daysCell = ws.getCell('A9')
+  daysCell.value = { formula: 'IFERROR(TripEnd-TripStart+1,"")', result: state.duration }
+  daysCell.numFmt = '0'
+  daysCell.protection = { hidden: true }
+  daysCell.font = lineFont
+  daysCell.alignment = { vertical: 'middle', horizontal: 'left', indent: 1 }
+
+  const partyCell = ws.getCell('B9')
+  partyCell.value = state.partyType.charAt(0).toUpperCase() + state.partyType.slice(1)
+  partyCell.protection = { locked: false }
+  partyCell.font = lineFont
+  partyCell.alignment = { vertical: 'middle', horizontal: 'left', indent: 1 }
+  ws.mergeCells('B9:C9')
+  ;(ws as any).dataValidations.add('B9', {
     type: 'list',
     allowBlank: false,
     formulae: ['"Solo,Couple,Family,Group"'],
     showErrorMessage: false,
   } as ExcelJS.DataValidation)
 
-  // C7 = NumAdults (named range anchor) — user-editable
-  const c7 = ws.getCell('C7')
-  c7.value = state.partySize
-  c7.numFmt = '0" travelers"'
-  c7.protection = { locked: false }
-  c7.font = lineFont
-  c7.alignment = { vertical: 'middle', horizontal: 'left' }
+  // D9 = NumAdults (named range anchor) — user-editable
+  const travelersCell = ws.getCell('D9')
+  travelersCell.value = state.partySize
+  travelersCell.numFmt = '0'
+  travelersCell.protection = { locked: false }
+  travelersCell.font = lineFont
+  travelersCell.alignment = { vertical: 'middle', horizontal: 'left', indent: 1 }
 
-  // Countdown badge (rows 9–11) — the mockup's big circular "292 / DAYS TO GO" marker.
-  // Excel can't draw it as a circle over the photo, so it's an accent-filled block in the
-  // panel: the count as one oversized number, the unit as a small caption beneath. They
-  // are two cells rather than one sentence so the number can carry its own display size.
+  // ── Rows 11–13: countdown badge ─────────────────────────────────────────────
+  // The mockup's big circular "292 / DAYS TO GO" marker. Excel can't draw it as a circle
+  // over the photo, so it's an accent-filled block spanning the full panel width: the
+  // count as one oversized number (A11:D12), the unit as a caption beneath (A13:D13).
+  // Two cells rather than one sentence so the number can carry its own display size.
   // Precomputed cached results so both render immediately on open (Excel/Sheets won't
   // trigger an initial recalc on this freshly written file).
   const today = new Date()
@@ -540,16 +678,13 @@ export function buildOverviewSheet(
   startDay.setHours(0, 0, 0, 0)
   const daysUntil = Math.round((startDay.getTime() - today.getTime()) / 86400000)
   const badgeFill = { type: 'pattern', pattern: 'solid', fgColor: { argb: ts.palette.secondary } } as ExcelJS.Fill
-  ;['A', 'B'].forEach((col) => {
-    ;[9, 10, 11].forEach((r) => {
+  LEFT_COLS.forEach((col) => {
+    ;[11, 12, 13].forEach((r) => {
       ws.getCell(`${col}${r}`).fill = badgeFill
     })
   })
-  ws.getRow(9).height = 26
-  ws.getRow(10).height = 26
 
-  ws.mergeCells('A9:B10')
-  const badgeCount = ws.getCell('A9')
+  const badgeCount = ws.getCell('A11')
   badgeCount.value = {
     formula: 'IFERROR(ABS(INT(TripStart-TODAY())),"—")',
     result: Math.abs(daysUntil),
@@ -561,10 +696,10 @@ export function buildOverviewSheet(
     bold: true,
     color: { argb: ts.palette.secondaryText },
   }
-  badgeCount.alignment = { vertical: 'bottom', horizontal: 'center' }
+  badgeCount.alignment = { vertical: 'middle', horizontal: 'center' }
+  ws.mergeCells('A11:D12')
 
-  ws.mergeCells('A11:B11')
-  const badgeUnit = ws.getCell('A11')
+  const badgeUnit = ws.getCell('A13')
   badgeUnit.value = {
     formula: 'IFERROR(IF(TripStart=TODAY(),"TODAY!",IF(TripStart>TODAY(),"DAYS TO GO","DAYS AGO")),"")',
     result: daysUntil === 0 ? 'TODAY!' : daysUntil > 0 ? 'DAYS TO GO' : 'DAYS AGO',
@@ -572,16 +707,17 @@ export function buildOverviewSheet(
   badgeUnit.protection = { hidden: true }
   badgeUnit.font = { name: ts.fontName, size: ts.sizes.data, bold: true, color: { argb: ts.palette.secondaryText } }
   badgeUnit.alignment = { vertical: 'top', horizontal: 'center' }
+  ws.mergeCells('A13:D13')
 
-  // Column widths for the whole A:D stack — the hero band, the row-15 strip, the
+  // Column widths for the whole A:D stack — the hero band, the row 15–16 card, the
   // currency widget, the readiness ring and quick-nav all share these, so each column is
   // sized for the WIDEST thing that lands in it, at the largest font that lands in it
   // (the hero rows run at title/header sizes, well above the 11pt default these width
   // units assume). Undersizing here is what produced "###" and clipped labels.
-  //   A: TripStart · duration · "CURRENCY" · quick-nav links
-  //   B: TripEnd (with its "–  " prefix) · party type · currency value
-  //   C: travelers · "TOTAL BUDGET"
-  //   D: total budget value
+  //   A: "DAYS" · day count · quick-nav links · left half of the date/currency cards
+  //   B: rest of the date/currency card merges · party type
+  //   C: "END DATE" / "TOTAL BUDGET" merge anchors
+  //   D: travelers · right half of those merges
   //   E: empty spacer between the panel and the cover photo (never filled)
   ws.getColumn('A').width = 10
   ws.getColumn('B').width = 18
@@ -589,68 +725,70 @@ export function buildOverviewSheet(
   ws.getColumn('D').width = 14
   ws.getColumn('E').width = 3
 
-  // ── Row 15: Currency + Total Budget compact strip ───────────────────────────
-  // Reuses the row the old key-value block's trailing spacer occupied, so nothing
-  // below (Budget Summary at row 16 onward) needs to move.
-  ws.getRow(15).height = 20
-
-  const currLabel = ws.getCell('A15')
-  currLabel.value = 'CURRENCY'
-  styleLabelCell(currLabel, ts)
+  // ── Rows 15–16: Currency + Total Budget card ────────────────────────────────
+  // Same label-over-value shape as the hero cards, but below the dark panel, so it uses
+  // the shared light caption/value styles. Merged in halves (A:B | C:D) so the two
+  // labels can't clip each other the way they did when all four sat on one row.
+  const cardLabel = (range: string, text: string): void => {
+    const anchor = range.split(':')[0]
+    const cell = ws.getCell(anchor)
+    cell.value = text
+    styleLabelCell(cell, ts)
+    ws.mergeCells(range)
+  }
+  cardLabel('A15:B15', 'CURRENCY')
+  cardLabel('C15:D15', 'TOTAL BUDGET')
 
   // Currency — informational label (chosen in the wizard), a dropdown so the user can
   // pick a different reference currency. Options are written to a hidden helper column
   // (R) because the full "CODE (symbol)" list exceeds Excel's 255-char inline list-
   // formula limit. Purely a label — does not affect any numFmt elsewhere (those are
   // static, baked in at generation time).
-  const currValue = ws.getCell('B15')
+  const currValue = ws.getCell('A16')
   currValue.value = `${state.currency} (${currSym})`
   currValue.protection = { locked: false }
   styleValueCell(currValue, ts)
+  ws.mergeCells('A16:B16')
 
   CURRENCIES.forEach((c, i) => {
     ws.getCell(`R${i + 1}`).value = `${c.code} (${c.symbol})`
   })
-  ;(ws as any).dataValidations.add('B15', {
+  ;(ws as any).dataValidations.add('A16', {
     type: 'list',
     allowBlank: true,
     formulae: [`$R$1:$R${CURRENCIES.length}`],
     showErrorMessage: false,
   } as ExcelJS.DataValidation)
 
-  const budgetLabel = ws.getCell('C15')
-  budgetLabel.value = 'TOTAL BUDGET'
-  styleLabelCell(budgetLabel, ts)
-
-  // D15 = TotalBudget (named range anchor) — live sum of the Estimated Budget column,
+  // C16 = TotalBudget (named range anchor) — live sum of the Estimated Budget column,
   // so it reflects any edits the user types into those cells. Cached result keeps the
   // cell populated before the first recalc.
-  const budgetValue = ws.getCell('D15')
-  budgetValue.value = { formula: 'SUM(G18:G23)', result: totalBudget }
+  const budgetValue = ws.getCell('C16')
+  budgetValue.value = { formula: 'SUM(G15:G20)', result: totalBudget }
   budgetValue.numFmt = ts.numFmtCurrency
   budgetValue.protection = { hidden: true }
   budgetValue.font = { name: ts.fontName, size: ts.sizes.header, bold: true }
+  budgetValue.alignment = { vertical: 'middle', horizontal: 'left' }
   budgetValue.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: ts.palette.mediumBg } } as ExcelJS.Fill
+  ws.mergeCells('C16:D16')
 
-  // ── Budget Summary Table (rows 16–24) ───────────────────────────────────────
-  ws.getCell('F16').value = 'BUDGET SUMMARY'
-  ws.mergeCells('F16:K16')
-  ws.getRow(16).height = 22
-  styleSectionHeaderCells(ws, ts, 16, RIGHT_COLS)
+  // ── Budget Summary Table (rows 13–21) ───────────────────────────────────────
+  // Header sits at row 13 with an 8pt gutter (row 12) between it and the cover photo,
+  // which now stops at row 11 instead of butting straight into this band.
+  ws.getCell('F13').value = 'BUDGET SUMMARY'
+  ws.mergeCells('F13:K13')
+  styleSectionHeaderCells(ws, ts, 13, RIGHT_COLS)
 
-  const colHeaderRow = ws.getRow(17)
-  ws.getCell('F17').value = 'Category'
-  ws.getCell('G17').value = 'Estimated Budget'
-  ws.getCell('H17').value = 'Actual Spent'
-  ws.getCell('I17').value = 'Remaining'
-  ws.getCell('J17').value = '% Used'
-  ws.getCell('K17').value = 'Status'
-  styleColumnHeader(colHeaderRow, ts)
+  ws.getCell('F14').value = 'Category'
+  ws.getCell('G14').value = 'Estimated Budget'
+  ws.getCell('H14').value = 'Actual Spent'
+  ws.getCell('I14').value = 'Remaining'
+  ws.getCell('J14').value = '% Used'
+  ws.getCell('K14').value = 'Status'
+  styleColumnHeaderCells(ws, ts, 14, RIGHT_COLS)
 
-  let rowIdx = 18
+  let rowIdx = 15
   categoryBudgetAmounts(state).forEach(({ key, amount: budgetAmt }, i) => {
-    const bRow = ws.getRow(rowIdx)
-
     ws.getCell(`F${rowIdx}`).value = key
 
     // Estimated Budget (col G) — a plain, editable starting value derived from the
@@ -720,49 +858,52 @@ export function buildOverviewSheet(
     pCell.numFmt = ts.numFmtCurrency
     pCell.protection = { hidden: true }
 
-    styleDataRow(bRow, ts, i % 2 === 0)
+    styleDataRowCells(ws, ts, rowIdx, RIGHT_COLS, i % 2 === 0)
     rowIdx++
   })
 
-  // Totals row
-  const totRow = ws.getRow(rowIdx)
+  // Totals row (row 21)
   ws.getCell(`F${rowIdx}`).value = 'TOTAL'
   const gTot = ws.getCell(`G${rowIdx}`)
-  gTot.value = { formula: `SUM(G18:G${rowIdx - 1})`, result: totalBudget }
+  gTot.value = { formula: `SUM(G15:G${rowIdx - 1})`, result: totalBudget }
   gTot.numFmt = ts.numFmtCurrency
   gTot.protection = { hidden: true }
   const hTot = ws.getCell(`H${rowIdx}`)
-  hTot.value = { formula: `SUM(H18:H${rowIdx - 1})`, result: 0 }
+  hTot.value = { formula: `SUM(H15:H${rowIdx - 1})`, result: 0 }
   hTot.numFmt = ts.numFmtCurrency
   hTot.protection = { hidden: true }
   const iTot = ws.getCell(`I${rowIdx}`)
-  iTot.value = { formula: `SUM(I18:I${rowIdx - 1})`, result: totalBudget }
+  iTot.value = { formula: `SUM(I15:I${rowIdx - 1})`, result: totalBudget }
   iTot.numFmt = ts.numFmtCurrency
   iTot.protection = { hidden: true }
-  styleTotalRow(totRow, ts)
-  rowIdx++
-
-  // ── Row spacer ──────────────────────────────────────────────────────────────
-  ws.getRow(rowIdx).height = 8
-  rowIdx++
+  styleTotalRowCells(ws, ts, rowIdx, RIGHT_COLS)
 
   // ── Currency Exchange Widget (cols A–D, rows 17–22) ─────────────────────────
-  // Sits left of the budget table (F16:K24) — same row band, different columns.
-  // Built after the budget table so widget fills override the row-level style passes.
+  // Sits left of the budget table (F13:K21) — same row band, different columns; the
+  // spec's "negative space beside the table" is exactly the six rows it needs.
+  // Built after the budget table so its fills win on any shared row.
   // Skip when source/target match — a same-currency converter (rate 1.0) is meaningless.
-  if (exchangeRate && exchangeRate.from !== exchangeRate.to) {
+  if (hasCurrencyWidget && exchangeRate) {
     buildCurrencyWidget(ws, ts, exchangeRate, 17)
   }
 
-  // Trip-readiness ring: header row 23, chart injected in index.ts anchored A24:E40.
+  // ── Spend chart (rows 23–35) ────────────────────────────────────────────────
+  // In-cell title so the injected chart itself carries none — a chart-space title eats
+  // plot height and doesn't line up with anything else on the sheet, whereas this band
+  // sits level with TRIP READINESS across the E gutter. Chart anchored F24:K35 (index.ts).
+  ws.getCell('F23').value = 'SPENT VS PLANNED'
+  ws.mergeCells('F23:K23')
+  styleSectionHeaderCells(ws, ts, 23, RIGHT_COLS)
+
+  // Trip-readiness ring: header row 23, chart injected in index.ts anchored A24:D33.
   buildReadinessHelpers(ws, ts, state)
 
-  // Quick-nav HYPERLINK list, lower-left below the ring.
-  buildQuickNav(ws, state, ts, 42)
+  // Quick-nav HYPERLINK list, lower-left — header level with the neighborhood guide's.
+  buildQuickNav(ws, state, ts, 37)
 
-  // Neighborhood guide, right column below the budget chart (F27:K44).
+  // Neighborhood guide, right column below the spend chart.
   if (state.useRecommendations && recommendations?.regions?.length) {
-    buildNeighborhoodGuide(ws, ts, recommendations.regions, 46)
+    buildNeighborhoodGuide(ws, ts, recommendations.regions, 37)
   }
 
   // ── Visual Budget Breakdown ─────────────────────────────────────────────────
@@ -788,9 +929,14 @@ export function buildOverviewSheet(
   // Hide the currency-dropdown options helper column (R)
   ws.getColumn('R').hidden = true
 
-  // ── Cover photo (optional, anchored F1:K14 — full hero band height) ─────────
+  // ── Cover photo (optional, anchored F1:K11) ─────────────────────────────────
+  // Stops at row 11, three rows short of the text panel's bottom, so the BUDGET SUMMARY
+  // header at row 13 gets a gutter instead of butting into the photo. PictureUploader's
+  // crop target (TARGET_W/TARGET_H) must match THIS range's aspect ratio — F:K is 99
+  // width units (~693px) and rows 1–11 total 198pt (~264px), i.e. ~2.63:1 — or the
+  // embedded photo stretches. Changing any row height in 1–11 changes that ratio.
   if (state.overviewImage) {
-    addDataUrlImage(wb, ws, state.overviewImage.dataUrl, 'jpeg', 'F1:K14')
+    addDataUrlImage(wb, ws, state.overviewImage.dataUrl, 'jpeg', 'F1:K11')
   }
 
   // OVERVIEW is a one-screen dashboard, not a scrollable table — no freeze pane (every

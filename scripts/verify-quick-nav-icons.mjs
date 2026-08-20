@@ -79,10 +79,10 @@ await wb.xlsx.load(buffer)
 const ws = wb.getWorksheet('OVERVIEW')
 assert(!!ws, 'OVERVIEW sheet exists')
 
-assert(ws.getCell('A42').value === 'JUMP TO', 'JUMP TO header still at A42')
+assert(ws.getCell('A37').value === 'JUMP TO', 'JUMP TO header still at A37')
 
 EXPECTED.forEach(([sheet, icon, label], i) => {
-  const row = 43 + i
+  const row = 38 + i
   const cell = ws.getCell(`A${row}`)
   const v = cell.value
   const formula = typeof v === 'object' && v ? v.formula : undefined
@@ -99,13 +99,13 @@ EXPECTED.forEach(([sheet, icon, label], i) => {
 })
 
 // No arrow left anywhere in the strip.
-for (let row = 42; row < 43 + EXPECTED.length; row++) {
+for (let row = 37; row < 38 + EXPECTED.length; row++) {
   const v = ws.getCell(`A${row}`).value
   const text = typeof v === 'object' && v ? `${v.formula ?? ''}${v.result ?? ''}` : String(v ?? '')
   assert(!text.includes('→'), `A${row} has no "→" arrow`)
 }
 
 // The row after the last link must be untouched by the strip.
-assert(ws.getCell(`A${43 + EXPECTED.length}`).value == null, 'strip ends after the last enabled sheet')
+assert(ws.getCell(`A${38 + EXPECTED.length}`).value == null, 'strip ends after the last enabled sheet')
 
 console.log(process.exitCode ? '\nFAILED' : '\nAll quick-nav icon checks passed')

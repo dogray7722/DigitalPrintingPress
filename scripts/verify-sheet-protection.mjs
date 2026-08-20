@@ -121,13 +121,13 @@ function assertUnprotected(sheetXml, sheetName) {
 {
   const xml = await loadSheetXml('OVERVIEW')
   assertProtected(xml, 'OVERVIEW')
-  assertUnlocked(xml, 'OVERVIEW', 'A5') // TripStart
-  assertUnlocked(xml, 'OVERVIEW', 'B5') // TripEnd
-  assertUnlocked(xml, 'OVERVIEW', 'C7') // NumAdults
-  assertUnlocked(xml, 'OVERVIEW', 'B15') // Currency
-  assertUnlocked(xml, 'OVERVIEW', 'G18')
-  assertHidden(xml, 'OVERVIEW', 'D15') // TotalBudget
-  assertHidden(xml, 'OVERVIEW', 'H18')
+  assertUnlocked(xml, 'OVERVIEW', 'A6') // TripStart
+  assertUnlocked(xml, 'OVERVIEW', 'C6') // TripEnd
+  assertUnlocked(xml, 'OVERVIEW', 'D9') // NumAdults
+  assertUnlocked(xml, 'OVERVIEW', 'A16') // Currency
+  assertUnlocked(xml, 'OVERVIEW', 'G15') // Estimated Budget, first category row
+  assertHidden(xml, 'OVERVIEW', 'C16') // TotalBudget
+  assertHidden(xml, 'OVERVIEW', 'H15') // Actual Spent, first category row
 }
 
 // ── TRANSPORTATION ───────────────────────────────────────────────────────────
@@ -205,7 +205,7 @@ try {
   const wb2 = new ExcelJS.Workbook()
   await wb2.xlsx.load(buffer)
   const ws2 = wb2.getWorksheet('OVERVIEW')
-  assert(ws2 && ws2.getCell('A5').value instanceof Date, 'ExcelJS re-opens protected workbook intact')
+  assert(ws2 && ws2.getCell('A6').value instanceof Date, 'ExcelJS re-opens protected workbook intact')
 } catch (e) {
   assert(false, 'ExcelJS re-open threw: ' + e.message)
 }
