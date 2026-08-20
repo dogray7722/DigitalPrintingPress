@@ -79,33 +79,33 @@ await wb.xlsx.load(buffer)
 const ws = wb.getWorksheet('OVERVIEW')
 assert(!!ws, 'OVERVIEW sheet exists')
 
-assert(ws.getCell('A37').value === 'JUMP TO', 'JUMP TO header still at A37')
+assert(ws.getCell('B38').value === 'JUMP TO', 'JUMP TO header still at B38')
 
 EXPECTED.forEach(([sheet, icon, label], i) => {
-  const row = 38 + i
-  const cell = ws.getCell(`A${row}`)
+  const row = 39 + i
+  const cell = ws.getCell(`B${row}`)
   const v = cell.value
   const formula = typeof v === 'object' && v ? v.formula : undefined
   const result = typeof v === 'object' && v ? v.result : undefined
   assert(
     typeof formula === 'string' && formula.includes(`#'${sheet}'!A1`),
-    `A${row} links to ${sheet}`
+    `B${row} links to ${sheet}`
   )
   assert(
     typeof formula === 'string' && formula.includes(`"${icon}  ${label}"`),
-    `A${row} formula display text is "${icon}  ${label}"`
+    `B${row} formula display text is "${icon}  ${label}"`
   )
-  assert(result === `${icon}  ${label}`, `A${row} cached result is "${icon}  ${label}"`)
+  assert(result === `${icon}  ${label}`, `B${row} cached result is "${icon}  ${label}"`)
 })
 
 // No arrow left anywhere in the strip.
-for (let row = 37; row < 38 + EXPECTED.length; row++) {
-  const v = ws.getCell(`A${row}`).value
+for (let row = 38; row < 39 + EXPECTED.length; row++) {
+  const v = ws.getCell(`B${row}`).value
   const text = typeof v === 'object' && v ? `${v.formula ?? ''}${v.result ?? ''}` : String(v ?? '')
-  assert(!text.includes('→'), `A${row} has no "→" arrow`)
+  assert(!text.includes('→'), `B${row} has no "→" arrow`)
 }
 
 // The row after the last link must be untouched by the strip.
-assert(ws.getCell(`A${38 + EXPECTED.length}`).value == null, 'strip ends after the last enabled sheet')
+assert(ws.getCell(`B${39 + EXPECTED.length}`).value == null, 'strip ends after the last enabled sheet')
 
 console.log(process.exitCode ? '\nFAILED' : '\nAll quick-nav icon checks passed')

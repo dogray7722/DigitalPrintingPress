@@ -69,23 +69,23 @@ export async function generateWorkbook(
   buffer = await injectChart(buffer, {
     kind: 'bar',
     sheetName: 'OVERVIEW',
-    categoryRange: "'OVERVIEW'!$F$15:$F$20",
+    categoryRange: "'OVERVIEW'!$G$15:$G$20",
     categoryLabels: cats.map(c => c.key),
-    // col N = MIN(actual, budget) = 0 with empty trackers.
+    // col O = MIN(actual, budget) = 0 with empty trackers.
     values: cats.map(() => 0),
-    // col O = MAX(budget - actual, 0) = budget; col P = MAX(actual - budget, 0) = 0.
+    // col P = MAX(budget - actual, 0) = budget; col Q = MAX(actual - budget, 0) = 0.
     remainderValues: cats.map(c => c.amount),
     overValues: cats.map(() => 0),
-    // col N = MIN(actual, budget) — colored "spent" segment (base of the stacked bar).
-    valueRange: "'OVERVIEW'!$N$15:$N$20",
-    // col O = MAX(budget - actual, 0) — light "remaining" segment stacked after
-    // col N so each category is one bar whose length = budget.
-    remainderRange: "'OVERVIEW'!$O$15:$O$20",
-    // col P = MAX(actual - budget, 0) — solid red overage segment stacked after
-    // col O, extending the bar past the budget length when a category is overspent.
-    overRange: "'OVERVIEW'!$P$15:$P$20",
-    // F24:K35, directly under the in-cell "SPENT VS PLANNED" header at row 23.
-    anchor: { fromCol: 5, fromRow: 23, toCol: 11, toRow: 35 },
+    // col O = MIN(actual, budget) — colored "spent" segment (base of the stacked bar).
+    valueRange: "'OVERVIEW'!$O$15:$O$20",
+    // col P = MAX(budget - actual, 0) — light "remaining" segment stacked after
+    // col O so each category is one bar whose length = budget.
+    remainderRange: "'OVERVIEW'!$P$15:$P$20",
+    // col Q = MAX(actual - budget, 0) — solid red overage segment stacked after
+    // col P, extending the bar past the budget length when a category is overspent.
+    overRange: "'OVERVIEW'!$Q$15:$Q$20",
+    // G25:L36, directly under the in-cell "SPENT VS PLANNED" header at row 24.
+    anchor: { fromCol: 6, fromRow: 24, toCol: 12, toRow: 36 },
     colors: CHART_PALETTES[state.theme],
     // No chart-space title — overview.ts writes the header into F23:K23 instead, so it
     // lines up with TRIP READINESS across the gutter and doesn't eat plot height.
@@ -98,13 +98,13 @@ export async function generateWorkbook(
     buffer = await injectChart(buffer, {
       kind: 'doughnut',
       sheetName: 'OVERVIEW',
-      categoryRange: "'OVERVIEW'!$T$1:$T$2",
+      categoryRange: "'OVERVIEW'!$U$1:$U$2",
       categoryLabels: ['Ready', 'To do'],
-      valueRange: "'OVERVIEW'!$S$1:$S$2", // S1 ready, S2 remaining
+      valueRange: "'OVERVIEW'!$T$1:$T$2", // T1 ready, T2 remaining
       values: [0, 1], // fresh workbook = 0% ready
-      // toCol is EXCLUSIVE, so this frame spans columns A–D and rows 24–33 — the
-      // centered "% ready" overlay (overview.ts) is merged A28:D29 to match.
-      anchor: { fromCol: 0, fromRow: 23, toCol: 4, toRow: 33 },
+      // toCol is EXCLUSIVE, so this frame spans columns B–E and rows 25–34 — the
+      // centered "% ready" overlay (overview.ts) is merged B29:E30 to match.
+      anchor: { fromCol: 1, fromRow: 24, toCol: 5, toRow: 34 },
       colors: [ts.palette.secondary, ts.palette.mediumBg],
       // No title/legend/per-slice labels — the "TRIP READINESS" heading and % are
       // in-cell (overview.ts), floating over the doughnut's transparent hole.

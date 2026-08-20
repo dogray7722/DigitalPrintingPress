@@ -129,21 +129,21 @@ export function buildInstructionsSheet(
   );
   row++;
   bulletLine(
-    "D3 — Trip Start: your trip start date. Changing it shifts every date formula across the workbook."
+    "B6 — Trip Start: your trip start date. Changing it shifts every date formula across the workbook."
   );
   row++;
   bulletLine(
-    "D4 — Trip End: your trip end date. Changing it adds or removes ITINERARY day and date rows."
+    "D6 — Trip End: your trip end date. Changing it adds or removes ITINERARY day and date rows."
   );
   row++;
-  bulletLine("D9 — Travelers: the number of travelers.");
+  bulletLine("E9 — Travelers: the number of travelers.");
   row++;
   bulletLine(
-    "D11 — Currency: a dropdown of currencies for reference (matches your wizard selection). Changing it here does NOT change the $/€/£ symbols used elsewhere in the workbook — see Section 6 for how to update those manually."
+    "B16 — Currency: a dropdown of currencies for reference (matches your wizard selection). Changing it here does NOT change the $/€/£ symbols used elsewhere in the workbook — see Section 6 for how to update those manually."
   );
   row++;
   bulletLine(
-    "D14 — Total Budget: the sum of the Estimated Budget column, calculated automatically."
+    "D16 — Total Budget: the sum of the Estimated Budget column, calculated automatically."
   );
   row++;
   spacer();
@@ -155,7 +155,7 @@ export function buildInstructionsSheet(
   bodyLine("Google Sheets — Date Picker");
   row++;
   bulletLine(
-    "OVERVIEW Start Date (A6) and End Date (C6): double-click to open the date picker calendar."
+    "OVERVIEW Start Date (B6) and End Date (D6): double-click to open the date picker calendar."
   );
   row++;
   bulletLine(
@@ -217,7 +217,7 @@ export function buildInstructionsSheet(
   );
   row++;
   bulletLine(
-    "Estimated Budget is entered as a default but fully editable — type your own figure over any cell. Total Budget (D14) is the sum of these cells."
+    "Estimated Budget is entered as a default but fully editable — type your own figure over any cell. Total Budget (D16) is the sum of these cells."
   );
   row++;
   bulletLine(
@@ -356,7 +356,7 @@ export function buildInstructionsSheet(
   sectionHeader("6.  CHANGING CURRENCY SYMBOLS");
   row++;
   bodyLine(
-    "The Currency dropdown on OVERVIEW (A16) is for reference only. Number formats — the $, €, £, etc. shown in Estimated Budget, Actual Spent, Remaining, and every other cost column — are fixed when this workbook is generated and can't follow a dropdown or formula."
+    "The Currency dropdown on OVERVIEW (B16) is for reference only. Number formats — the $, €, £, etc. shown in Estimated Budget, Actual Spent, Remaining, and every other cost column — are fixed when this workbook is generated and can't follow a dropdown or formula."
   );
   row++;
   bodyLine("To change the symbol on a column or group of cells yourself:");
@@ -391,25 +391,25 @@ export function buildInstructionsSheet(
   const namedRanges = [
     {
       name: "TripStart",
-      location: "A6",
+      location: "B6",
       description:
         "Trip start date. Drives ITINERARY auto-dates and all date formulas."
     },
     {
       name: "TripEnd",
-      location: "C6",
+      location: "D6",
       description:
         "Trip end date. Controls how many ITINERARY day rows are visible."
     },
     {
       name: "NumAdults",
-      location: "D9",
+      location: "E9",
       description:
         "Number of travelers. Used in per-person budget/excursion calculations."
     },
     {
       name: "TotalBudget",
-      location: "C16",
+      location: "D16",
       description:
         "Total estimated budget (sum of the Budget Summary Estimated Budget column)."
     }
