@@ -309,11 +309,11 @@ export function buildInstructionsSheet(
     },
     {
       id: "packingList",
-      tip: "Mark items as ✓ in the Packed? column (see below for how to type the ✓ check mark). The progress bar at the top updates automatically."
+      tip: "Mark items off in the Packed? column — click the cell and pick ✓ from the dropdown. The progress bar at the top updates automatically. To un-pack an item, clear the cell."
     },
     {
       id: "tasks",
-      tip: "Pre-trip to-do list. Mark tasks as ✓ when done (see below for how to type the ✓ check mark); the progress bar updates automatically."
+      tip: "Pre-trip to-do list. Mark a task done in the Done? column — click the cell and pick ✓ from the dropdown; the progress bar updates automatically. To reopen a task, clear the cell."
     },
     {
       id: "events",
@@ -327,27 +327,6 @@ export function buildInstructionsSheet(
       row++;
     }
   });
-
-  // How to type the ✓ check mark used in the Packing List and Tasks tabs.
-  if (state.sheets.packingList || state.sheets.tasks) {
-    bodyLine("Typing the ✓ check mark (Packing List & Tasks):");
-    row++;
-    bulletLine(
-      "Windows: press the Windows key + . (period) to open the emoji & symbol picker, search “check”, and choose ✓. Or hold Alt and type 10003 on the numeric keypad, then release Alt.",
-      { sub: true }
-    );
-    row++;
-    bulletLine(
-      "Mac: press Control + Command + Space to open the Character Viewer, search “check mark”, and double-click ✓.",
-      { sub: true }
-    );
-    row++;
-    bulletLine(
-      "Easiest on either platform: copy a ✓ from a cell that already has one and paste it into the others.",
-      { sub: true }
-    );
-    row++;
-  }
 
   spacer();
   row++;

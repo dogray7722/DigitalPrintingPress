@@ -67,7 +67,8 @@ export function buildTasksSheet(
   ws.getCell('A2').alignment = { vertical: 'middle', horizontal: 'center' }
   ws.getRow(2).height = 24
 
-  ws.getCell('A3').value = 'Add ✓ in the Done? column as you complete each task.'
+  ws.getCell('A3').value =
+    'Pick ✓ from the dropdown in the Done? column as you complete each task.'
   ws.mergeCells('A3:F3')
   styleSectionHeader(ws.getRow(3), ts)
 
@@ -78,6 +79,16 @@ export function buildTasksSheet(
   ws.getCell('E4').value = 'Priority'
   ws.getCell('F4').value = 'Due / Notes'
   styleColumnHeader(ws.getRow(4), ts)
+
+  // Done? dropdown — a single "✓" option so the buyer never has to hunt for the
+  // character in a symbol picker. allowBlank lets them clear a cell to un-check it.
+  // The literal must stay "✓" to match the COUNTIF in A2 and OVERVIEW's readiness ring.
+  ;(ws as any).dataValidations.add('D5:D500', {
+    type: 'list',
+    allowBlank: true,
+    formulae: ['"✓"'],
+    showErrorMessage: false,
+  } as ExcelJS.DataValidation)
 
   // Priority validation
   ;(ws as any).dataValidations.add('E5:E500', {

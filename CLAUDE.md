@@ -47,10 +47,28 @@ All sheet builders are in `src/lib/excel/sheets/`. The entry point is `src/lib/e
 | 5   | RESTAURANTS    | toggle    | AI recommendation guide table appended below tracker                                                                                             |
 | 6   | EXCURSIONS     | toggle    | Per-person × NumAdults; AI recommendation guide table appended below tracker                                                                     |
 | 7   | BUDGET TRACKER | toggle    | Date / Category dropdown / Description / Amount / Running Total / Notes                                                                          |
-| 8   | PACKING LIST   | toggle    | Seasonal packing + COUNTIF progress formula                                                                                                      |
-| 9   | TASKS          | toggle    |                                                                                                                                                  |
+| 8   | PACKING LIST   | toggle    | Seasonal packing + COUNTIF progress formula; `Packed?` (C5:C500) is a one-option `"✓"` dropdown (see below)                                       |
+| 9   | TASKS          | toggle    | `Done?` (D5:D500) is a one-option `"✓"` dropdown (see below); Priority dropdown on E5:E500                                                        |
 | 10  | ANNUAL EVENTS  | AI-gated  | Only generated when `useRecommendations` is on AND data returned                                                                                 |
 | 11  | INSTRUCTIONS   | ✓         | Always last; not toggleable                                                                                                                      |
+
+### Check-mark dropdowns (PACKING LIST / TASKS)
+
+`Packed?` (`C5:C500`) and `Done?` (`D5:D500`) each carry a **single-option list data
+validation whose only value is `✓`** — picking from a dropdown beats making the buyer find
+the character in Windows' emoji picker or Mac's Character Viewer, and INSTRUCTIONS no
+longer explains how to type it. `allowBlank: true` is what lets a cell be cleared to
+un-check a row, so keep it.
+
+The literal is load-bearing in three places that must stay in sync: the dropdown option,
+each sheet's `A2` COUNTIF progress formula, and OVERVIEW's readiness-ring counts
+(`overview.ts` `T1`). Changing the glyph in one place silently pins the progress bars at
+0%. `scripts/verify-check-dropdowns.mjs` asserts the dropdown, the COUNTIF, and the raw
+sheet XML all agree — note ExcelJS XML-escapes the wrapping quotes (`&quot;✓&quot;`), which
+is the same shape Excel writes for an inline list, so assert on either form.
+
+Excel needs the target cells **unlocked** for a dropdown to be usable on a protected
+sheet — both columns already are (see `protection.ts`).
 
 ## AI Recommendations
 
@@ -319,6 +337,7 @@ scripts/
   verify-sheet-protection.mjs
   verify-quick-nav-icons.mjs
   verify-rec-jump-links.mjs
+  verify-check-dropdowns.mjs
 ```
 
 ## Row Height / Text Wrapping (ExcelJS)
@@ -346,6 +365,7 @@ node scripts/verify-image-chart-injection.mjs
 node scripts/verify-two-chart-injection.mjs  # budget chart + readiness doughnut share one drawing part
 node scripts/verify-sheet-protection.mjs
 node scripts/verify-quick-nav-icons.mjs      # OVERVIEW JUMP TO strip: per-sheet emoji survive into the hyperlink `display` attr; no r:id; cover-photo drawing rel intact
+node scripts/verify-check-dropdowns.mjs      # PACKING LIST C / TASKS D one-option "✓" dropdown matches the COUNTIF literal, in-model and in raw XML
 node scripts/verify-rec-jump-links.mjs       # tracker row-2 "★ Recommendations →" button: native location+display XML, no r:id, no leftover hyperlink rels, chip styling contrasts the band, and band fill preserved when there's no guide
 ```
 

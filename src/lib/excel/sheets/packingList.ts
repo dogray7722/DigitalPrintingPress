@@ -39,9 +39,20 @@ export function buildPackingListSheet(
   ws.getCell('A2').alignment = { vertical: 'middle', horizontal: 'center' }
   ws.getRow(2).height = 24
 
-  ws.getCell('A3').value = 'Add ✓ in the Packed? column as you pack. Progress updates automatically.'
+  ws.getCell('A3').value =
+    'Pick ✓ from the dropdown in the Packed? column as you pack. Progress updates automatically.'
   ws.mergeCells('A3:E3')
   styleSectionHeader(ws.getRow(3), ts)
+
+  // Packed? dropdown — a single "✓" option so the buyer never has to hunt for the
+  // character in a symbol picker. allowBlank lets them clear a cell to un-pack it.
+  // The literal must stay "✓" to match the COUNTIF in A2 and OVERVIEW's readiness ring.
+  ;(ws as any).dataValidations.add('C5:C500', {
+    type: 'list',
+    allowBlank: true,
+    formulae: ['"✓"'],
+    showErrorMessage: false,
+  } as ExcelJS.DataValidation)
 
   // Column headers
   ws.getCell('A4').value = 'Category'
