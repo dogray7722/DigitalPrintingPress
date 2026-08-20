@@ -231,9 +231,15 @@ for (const path of sheetPaths) {
   for (const m of xml.matchAll(/<hyperlink\b[^>]*\/>/g)) hyperlinks.push({ path, tag: m[0] })
 }
 
+// Count only the tracker links by their target — OVERVIEW's quick-nav strip also emits
+// native hyperlinks now, and its count varies with which sheets are toggled on.
+const guideTargets = SHEETS.map(([name, recRow]) => `'${name}'!A${recRow}`)
+const trackerLinks = hyperlinks.filter((h) =>
+  guideTargets.some((t) => h.tag.includes(`location="${t.replace(/'/g, '&apos;')}"`))
+)
 assert(
-  hyperlinks.length === 3,
-  `3 native hyperlinks emitted (one per tracker sheet), got ${hyperlinks.length}`
+  trackerLinks.length === 3,
+  `3 tracker guide links emitted (one per sheet), got ${trackerLinks.length}`
 )
 
 for (const { tag } of hyperlinks) {

@@ -1,10 +1,16 @@
-// Verifies the OVERVIEW "JUMP TO" strip: every enabled sheet gets one HYPERLINK row
-// prefixed with its SHEET_ICONS emoji, the old "→" arrow is gone, and the astral-plane
-// emoji survive the round trip through the formula string literal AND the cached
-// result (ExcelJS writes both into xl/worksheets/sheet1.xml as UTF-8).
+// Verifies the OVERVIEW "JUMP TO" strip: every enabled sheet gets one internal-hyperlink
+// row prefixed with its SHEET_ICONS emoji, the old "→" arrow is gone, and the
+// astral-plane emoji survive the round trip into xl/worksheets/sheet1.xml as UTF-8 —
+// both as the cell's own text and inside the hyperlink's `display` attribute.
+//
+// These are NATIVE internal hyperlinks, not HYPERLINK() formulas, so the targets are
+// asserted against the raw XML: ExcelJS's reader only binds a hyperlink to its cell when
+// the element carries an r:id (worksheet-xform.js `if (hyperlink.rId)`), and Excel's own
+// r:id-less internal form therefore never surfaces on a loaded cell.
 // Run: node scripts/verify-quick-nav-icons.mjs
 import { build } from 'esbuild'
 import ExcelJS from 'exceljs'
+import JSZip from 'jszip'
 import { rmSync } from 'node:fs'
 
 const tmpModPath = new URL('./.quicknav.tmp.mjs', import.meta.url)
@@ -81,28 +87,51 @@ assert(!!ws, 'OVERVIEW sheet exists')
 
 assert(ws.getCell('B38').value === 'JUMP TO', 'JUMP TO header still at B38')
 
-EXPECTED.forEach(([sheet, icon, label], i) => {
+// The cell's own text still round-trips through ExcelJS (that's what a link-ignoring
+// consumer renders); the link target lives in the XML, checked below.
+EXPECTED.forEach(([, icon, label], i) => {
   const row = 39 + i
-  const cell = ws.getCell(`B${row}`)
-  const v = cell.value
-  const formula = typeof v === 'object' && v ? v.formula : undefined
-  const result = typeof v === 'object' && v ? v.result : undefined
-  assert(
-    typeof formula === 'string' && formula.includes(`#'${sheet}'!A1`),
-    `B${row} links to ${sheet}`
-  )
-  assert(
-    typeof formula === 'string' && formula.includes(`"${icon}  ${label}"`),
-    `B${row} formula display text is "${icon}  ${label}"`
-  )
-  assert(result === `${icon}  ${label}`, `B${row} cached result is "${icon}  ${label}"`)
+  const v = ws.getCell(`B${row}`).value
+  const text = typeof v === 'object' && v ? v.text : v
+  assert(text === `${icon}  ${label}`, `B${row} label is "${icon}  ${label}"`)
 })
 
 // No arrow left anywhere in the strip.
 for (let row = 38; row < 39 + EXPECTED.length; row++) {
   const v = ws.getCell(`B${row}`).value
-  const text = typeof v === 'object' && v ? `${v.formula ?? ''}${v.result ?? ''}` : String(v ?? '')
+  const text = typeof v === 'object' && v ? String(v.text ?? '') : String(v ?? '')
   assert(!text.includes('→'), `B${row} has no "→" arrow`)
+}
+
+// ── Native internal-hyperlink shape in the raw XML ────────────────────────────
+// Excel's own form is `location` + `display` with NO r:id. Without `display`, Google
+// Sheets renders the link text as a literal "#gid=xxxx" instead of the label.
+const zip = await JSZip.loadAsync(buffer)
+const overviewXml = await zip.file('xl/worksheets/sheet1.xml').async('string')
+const tags = [...overviewXml.matchAll(/<hyperlink\b[^>]*\/>/g)].map((m) => m[0])
+
+assert(
+  tags.length === EXPECTED.length,
+  `${EXPECTED.length} quick-nav hyperlinks on OVERVIEW, got ${tags.length}`
+)
+
+EXPECTED.forEach(([sheet, icon, label], i) => {
+  const row = 39 + i
+  const tag = tags.find((t) => t.includes(`ref="B${row}"`))
+  assert(!!tag, `B${row} has a hyperlink element`)
+  if (!tag) return
+  assert(tag.includes(`location="&apos;${sheet}&apos;!A1"`), `B${row} links to ${sheet}`)
+  // The emoji must survive into the display attribute, not just the cell text.
+  assert(tag.includes(`display="${icon}  ${label}"`), `B${row} display is "${icon}  ${label}"`)
+  assert(!/r:id=/.test(tag), `B${row} carries no r:id`)
+})
+
+// OVERVIEW is the sheet chartInjection rewrites, and the cover-photo drawing rel sits
+// AFTER the hyperlink rels. Deleting hyperlink rels must not orphan it.
+const rels = (await zip.file('xl/worksheets/_rels/sheet1.xml.rels')?.async('string')) ?? ''
+assert(!/relationships\/hyperlink/.test(rels), 'no leftover hyperlink relationships on OVERVIEW')
+for (const rid of new Set([...overviewXml.matchAll(/r:id="(rId\d+)"/g)].map((m) => m[1]))) {
+  assert(rels.includes(`Id="${rid}"`), `OVERVIEW r:id ${rid} still resolves (drawing intact)`)
 }
 
 // The row after the last link must be untouched by the strip.

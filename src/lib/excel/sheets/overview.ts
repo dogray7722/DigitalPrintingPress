@@ -452,9 +452,16 @@ function addDataUrlImage(
   ws.addImage(imageId, range)
 }
 
-// Quick-nav: one internal HYPERLINK per enabled sheet, merged across B:E. Only enabled
+// Quick-nav: one internal hyperlink per enabled sheet, merged across B:E. Only enabled
 // sheets get a link, so none dangle. Sheet display names come from the builders' tab
 // names. Returns the next free row.
+//
+// These are NATIVE internal hyperlinks (`{ text, hyperlink }`), not `HYPERLINK()`
+// formulas. The formula form navigates in Excel but is inert in Google Sheets, which is
+// where this strip is most useful — it's the workbook's table of contents. See
+// `nativeHyperlinks.ts`, which rewrites them into Excel's `location` + `display` shape
+// after chart injection. Google Sheets still needs a second click via its link-preview
+// chip; that is a platform behavior no file can change.
 function buildQuickNav(ws: ExcelJS.Worksheet, state: WizardState, ts: ThemeStyles, startRow: number): number {
   const links: [boolean, string, string, SheetId][] = [
     [state.sheets.itinerary, 'ITINERARY', 'Itinerary', 'itinerary'],
@@ -478,7 +485,7 @@ function buildQuickNav(ws: ExcelJS.Worksheet, state: WizardState, ts: ThemeStyle
     // shows). It renders in its own colors and ignores the font color below —
     // only the label text picks up the theme primary.
     const text = `${SHEET_ICONS[id]}  ${label}`
-    cell.value = { formula: `HYPERLINK("#'${sheet}'!A1","${text}")`, result: text }
+    cell.value = { text, hyperlink: `'${sheet}'!A1` }
     cell.font = { name: ts.fontName, size: ts.sizes.data, bold: true, color: { argb: ts.palette.primary } }
     ws.mergeCells(`B${r}:E${r}`)
     ws.getRow(r).height = BOTTOM_ROW_H

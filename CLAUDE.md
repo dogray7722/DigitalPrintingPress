@@ -40,7 +40,7 @@ All sheet builders are in `src/lib/excel/sheets/`. The entry point is `src/lib/e
 
 | #   | Sheet          | Always on | Notes                                                                                                                                            |
 | --- | -------------- | --------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
-| 1   | OVERVIEW       | ✓         | Named ranges: TripStart B6, TripEnd D6, NumAdults E9, TotalBudget D16; rows 1–14 are a dashboard "hero band" (dark B:E text panel + G1:L11 cover photo, no gridlines/freeze — see below) instead of a title bar + label/value ledger; native DrawingML chart(s) injected via JSZip post-processing; trip-readiness doughnut ring (B25:E34) with a centered `T1/T3` "% ready" label floated over its transparent hole, quick-nav HYPERLINK strip (B38+, each link prefixed with its `SHEET_ICONS` emoji — the same map the Step 3 toggle grid uses, exported from `src/types/wizard.ts`), neighborhood guide from AI regions (G38+, when recs enabled). Exactly one image (the cover photo) — a second upload + multi-image strip was tried and removed: it served no purpose and arbitrary source dimensions made the results unpredictable |
+| 1   | OVERVIEW       | ✓         | Named ranges: TripStart B6, TripEnd D6, NumAdults E9, TotalBudget D16; rows 1–14 are a dashboard "hero band" (dark B:E text panel + G1:L11 cover photo, no gridlines/freeze — see below) instead of a title bar + label/value ledger; native DrawingML chart(s) injected via JSZip post-processing; trip-readiness doughnut ring (B25:E34) with a centered `T1/T3` "% ready" label floated over its transparent hole, quick-nav internal-hyperlink strip (B38+, each link prefixed with its `SHEET_ICONS` emoji — the same map the Step 3 toggle grid uses, exported from `src/types/wizard.ts`), neighborhood guide from AI regions (G38+, when recs enabled). Exactly one image (the cover photo) — a second upload + multi-image strip was tried and removed: it served no purpose and arbitrary source dimensions made the results unpredictable |
 | 2   | ITINERARY      | ✓         | Auto-dates from TripStart+n; AI-prefilled when recs on                                                                                           |
 | 3   | TRANSPORT      | toggle    | SheetId = `flights`; Mode dropdown: Air/Train/Bus/Car/Ferry/Taxi/Other                                                                           |
 | 4   | HOTELS         | toggle    | Date col auto-fills from TripStart; AI recommendation guide table appended below tracker                                                         |
@@ -67,7 +67,7 @@ Requires `ANTHROPIC_API_KEY` in `.env` (see `.env.example`).
 
 **Recommendation insert** (`src/lib/excel/sheets/recommendationInsert.ts`): `buildRecommendationInsert(ws, startRow, ts, regions, kind)` renders a region-grouped guide table BELOW the working tracker on each of HOTELS/RESTAURANTS/EXCURSIONS. The `kind` picks the array and attribute columns (hotels=Price+Stars, restaurants=Cuisine+Price, excursions=Duration+Price). The places loop **must** `row++` per place or ExcelJS throws "Cannot merge already merged cells."
 
-**Recommendations link.** The guide lands far below the tracker (row 28 on ACCOMMODATION, 58 on DINING, 38 on EXCURSIONS), so each tracker carries a "★ Recommendations →" chip to it. It's a **native internal hyperlink** (`cell.value = { text, hyperlink: "'SHEET'!A28" }`), *not* the `HYPERLINK()` formula form OVERVIEW's quick-nav strip still uses — see "Native Internal Hyperlinks" below. No formula means no cached `result:` obligation. (There is deliberately **no** "back to top" link — it was tried and removed.)
+**Recommendations link.** The guide lands far below the tracker (row 28 on ACCOMMODATION, 58 on DINING, 38 on EXCURSIONS), so each tracker carries a "★ Recommendations →" chip to it. It's a **native internal hyperlink** (`cell.value = { text, hyperlink: "'SHEET'!A28" }`), the same form OVERVIEW's quick-nav strip uses — see "Native Internal Hyperlinks" below. No formula means no cached `result:` obligation. (There is deliberately **no** "back to top" link — it was tried and removed.)
 
 - The link sits in the **last two cells of the row-2 description band**, merged — `F2:G2` / `G2:H2` / `I2:J2` — which is inside every tracker's frozen pane (`ySplit: 5`), so it stays on screen at any scroll depth.
 - **Row 2's merge stops two columns short** (`A2:E2` / `A2:F2` / `A2:H2`) to free that range. The ACCOMMODATION and DINING descriptions were **trimmed** to fit: at the band's `sectionHeader` size (13pt) a width unit holds only ~0.8 chars, and there is no wrap on this row (height 22). Caps are roughly **73 / 93 / 102** characters. Re-lengthening a description past its cap will clip it mid-word.
@@ -111,7 +111,9 @@ The pass recovers `display` from the cell's own value (via `sharedStrings.xml`),
 
 **Google Sheets needs two clicks to follow ANY link, and the file cannot change that.** Clicking a linked cell opens a preview chip; following the link is a second click on the chip. This is universal Sheets behavior for every link in every spreadsheet — native or `HYPERLINK()` formula — not something `location`/`display` influences. The only mitigations are viewer-side and partial (Docs → Tools → Preferences → "Show Link Details" off shrinks the card but a small chip remains; publish-to-web gives single-click but doesn't apply to a downloaded file). Excel follows on one click. **Don't try to "fix" this in the workbook** — there is nothing to fix.
 
-OVERVIEW's quick-nav strip still uses the formula form and so remains Excel-only; converting it would need care around `chartInjection.ts` already rewriting that sheet's rels.
+**Every internal link in the workbook now uses this form** — the three tracker chips and OVERVIEW's 8-row quick-nav strip. No `HYPERLINK()` formula links remain; don't reintroduce one.
+
+**OVERVIEW is the delicate case, and it works because nothing is renumbered.** ExcelJS assigns rIds to hyperlinks *before* drawings (`worksheet-xform.js`), so the cover-photo drawing lands on `rId9` behind the 8 quick-nav rels, and `chartInjection` then merges its charts into that existing drawing part. Deleting the hyperlink rels afterwards leaves `<drawing r:id="rId9"/>` resolving fine — rIds needn't be contiguous. `verify-quick-nav-icons.mjs` asserts exactly that (`OVERVIEW r:id rId9 still resolves`), so a future change that renumbers instead of deleting fails the suite rather than shipping a repair prompt.
 
 ## Chart Injection
 
@@ -153,7 +155,7 @@ rhythm rather than two independently drifting columns.
 | 24    | TRIP READINESS header                          | SPENT VS PLANNED header               |
 | 25–36 | readiness doughnut (25–34), count caption (35) | spend bar chart (25–36)               |
 | 38    | JUMP TO header                                 | WHERE TO BASE YOURSELF header         |
-| 39–48 | quick-nav HYPERLINK rows (39–46)               | five neighborhoods, two rows each     |
+| 39–48 | quick-nav hyperlink rows (39–46)               | five neighborhoods, two rows each     |
 
 **All row heights are set in one `rowHeights` map** at the top of `buildOverviewSheet`,
 not by each block. Because the two columns share row numbers, every height is a
@@ -343,7 +345,7 @@ node scripts/verify-currency-dropdown.mjs    # currency dropdown round-trip
 node scripts/verify-image-chart-injection.mjs
 node scripts/verify-two-chart-injection.mjs  # budget chart + readiness doughnut share one drawing part
 node scripts/verify-sheet-protection.mjs
-node scripts/verify-quick-nav-icons.mjs      # OVERVIEW JUMP TO strip: per-sheet emoji survive the HYPERLINK formula round-trip
+node scripts/verify-quick-nav-icons.mjs      # OVERVIEW JUMP TO strip: per-sheet emoji survive into the hyperlink `display` attr; no r:id; cover-photo drawing rel intact
 node scripts/verify-rec-jump-links.mjs       # tracker row-2 "★ Recommendations →" button: native location+display XML, no r:id, no leftover hyperlink rels, chip styling contrasts the band, and band fill preserved when there's no guide
 ```
 
