@@ -11,7 +11,11 @@ import {
   styleTotalRow
 } from "../styleFactory";
 import { THEMES } from "../../../types/theme";
-import { buildRecommendationInsert } from "./recommendationInsert";
+import {
+  buildRecommendationInsert,
+  buildRecommendationsLink,
+  reserveRecommendationsSlot
+} from "./recommendationInsert";
 
 export function buildRestaurantsSheet(
   wb: ExcelJS.Workbook,
@@ -26,10 +30,13 @@ export function buildRestaurantsSheet(
   ws.mergeCells("A1:H1");
   styleTitleRow(ws.getRow(1), ts);
 
+  // Description stops at F so G:H can carry the recommendations button; trimmed to fit
+  // that span (A:F caps out around 93 characters at the band's 13pt, and it can't wrap).
   ws.getCell("A2").value =
-    "Log restaurants, cafes, coffee shops, bars, etc. Rating: 1–5 stars. Type: Breakfast / Lunch / Dinner / Snack.";
-  ws.mergeCells("A2:H2");
+    "Log restaurants, cafes, bars. Rating: 1–5 stars. Type: Breakfast / Lunch / Dinner / Snack.";
+  ws.mergeCells("A2:F2");
   styleSectionHeader(ws.getRow(2), ts);
+  reserveRecommendationsSlot(ws, ts, "G2:H2");
 
   ws.getCell("A3").value = "TOTAL FOOD COST";
   ws.getCell("A3").font = {
@@ -127,8 +134,13 @@ export function buildRestaurantsSheet(
   ws.getColumn("G").width = 12;
   ws.getColumn("H").width = 35;
 
-  // Informational AI guide below the tracker (TOTAL row is 56; leave a spacer at 57)
-  buildRecommendationInsert(ws, 58, ts, regions, "restaurants");
+  // Informational AI guide below the tracker (TOTAL row is 56; leave a spacer at 57).
+  // When it renders, light up the link slot at the end of the row 2 band — that row is
+  // inside the frozen pane, so the guide stays reachable at any scroll depth.
+  const recRow = totRow + 2;
+  if (buildRecommendationInsert(ws, recRow, ts, regions, "restaurants")) {
+    buildRecommendationsLink(ws, ts, "G2", recRow);
+  }
 
   ws.views = [{ state: "frozen", xSplit: 0, ySplit: 5, activeCell: "A6" }];
 }

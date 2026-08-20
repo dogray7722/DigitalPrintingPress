@@ -4,7 +4,11 @@ import type { ThemeStyles } from '../styleFactory'
 import type { RegionRec } from '../../recommendations/types'
 import { styleTitleRow, styleSectionHeader, styleColumnHeader, styleDataCell, styleTotalRow } from '../styleFactory'
 import { THEMES } from '../../../types/theme'
-import { buildRecommendationInsert } from './recommendationInsert'
+import {
+  buildRecommendationInsert,
+  buildRecommendationsLink,
+  reserveRecommendationsSlot,
+} from './recommendationInsert'
 
 export function buildHotelsSheet(
   wb: ExcelJS.Workbook,
@@ -20,9 +24,13 @@ export function buildHotelsSheet(
   ws.mergeCells('A1:G1')
   styleTitleRow(ws.getRow(1), ts)
 
-  ws.getCell('A2').value = 'Track all accommodation costs. Use Cost Type to log nightly rates, taxes, fees, parking and other charges as separate rows.'
-  ws.mergeCells('A2:G2')
+  // Description stops at E so F:G can carry the recommendations button. Trimmed to fit
+  // that span: at the band's 13pt a width unit holds only ~0.8 chars, so A:E caps out
+  // around 73 characters and there is no wrap on this row.
+  ws.getCell('A2').value = 'Use Cost Type to log rates, taxes, fees and parking as separate rows.'
+  ws.mergeCells('A2:E2')
   styleSectionHeader(ws.getRow(2), ts)
+  reserveRecommendationsSlot(ws, ts, 'F2:G2')
 
   // Summary row — sums the Cost column (E).
   ws.getCell('A3').value = 'TOTAL ACCOMMODATION COST'
@@ -98,8 +106,13 @@ export function buildHotelsSheet(
   ws.getColumn('F').width = 20
   ws.getColumn('G').width = 39
 
-  // Informational AI guide below the tracker (TOTAL row is 26; leave a spacer)
-  buildRecommendationInsert(ws, totRow + 2, ts, regions, 'hotels')
+  // Informational AI guide below the tracker (TOTAL row is 26; leave a spacer). When it
+  // renders, light up the link slot at the end of the row 2 band — that row is inside the
+  // frozen pane, so the guide stays reachable however far down the tracker the user is.
+  const recRow = totRow + 2
+  if (buildRecommendationInsert(ws, recRow, ts, regions, 'hotels')) {
+    buildRecommendationsLink(ws, ts, 'F2', recRow)
+  }
 
   ws.views = [{ state: 'frozen', xSplit: 0, ySplit: 5, activeCell: 'A6' }]
 }

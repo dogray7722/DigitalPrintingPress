@@ -5,6 +5,7 @@ import { configureWorkbook, addNamedRanges } from './workbookConfig'
 import { getThemeStyles } from './styleFactory'
 import { injectChart, CHART_PALETTES } from './chartInjection'
 import { injectCalcChain } from './calcChain'
+import { injectNativeHyperlinks } from './nativeHyperlinks'
 import { protectWorkbook } from './protection'
 import { buildOverviewSheet, categoryBudgetAmounts } from './sheets/overview'
 import { buildBudgetTrackerSheet } from './sheets/budgetTracker'
@@ -112,6 +113,12 @@ export async function generateWorkbook(
       dataLabels: false,
     })
   }
+
+  // ExcelJS writes internal (same-workbook) hyperlinks in a malformed shape that Excel
+  // treats as external and Google Sheets renders as "#gid=xxxx". Rewrite them the way
+  // Excel does. MUST run after injectChart: chart injection allocates its worksheet rel
+  // as maxRelId+1, and this pass deletes rels.
+  buffer = await injectNativeHyperlinks(buffer)
 
   // ExcelJS also never writes the calcChain part; without it Excel for Mac
   // repaints the injected chart one calculation behind the cells.

@@ -121,7 +121,7 @@ export function buildInstructionsSheet(
   );
   row++;
   bulletLine(
-    "Formula and total cells are locked and hidden so you can't accidentally type over them — you can still edit every date, description, and cost field. This is an Excel feature only; if you upload this file to Google Sheets, all cells become editable again."
+    "Formula and total cells are locked and hidden so you can't accidentally type over them — you can still edit every date, description, and cost field. On ITINERARY only the Date column (B) is locked, since it fills itself from Trip Start; everything else on that tab is yours to rewrite. This is an Excel feature only; if you upload this file to Google Sheets, all cells become editable again."
   );
   row++;
   bodyLine(

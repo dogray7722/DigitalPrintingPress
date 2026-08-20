@@ -65,6 +65,17 @@ export function buildItinerarySheet(
       result: withinTrip ? addDays(startDate, day) : '',
     }
     dateCell.numFmt = 'ddd dd mmm'
+    // Column B is the ONLY guarded column on this sheet — see the per-cell unlock
+    // below. Locked (ExcelJS's default) + formula hidden from the formula bar, so
+    // typing over a date can't silently sever the TripStart link for that row.
+    dateCell.protection = { hidden: true }
+
+    // Everything else in the row is the user's to edit. This sheet is a writing
+    // surface, not a calculator: the plan text in C–I is the whole point, and column A's
+    // day number is left editable too because only B was asked to stay guarded.
+    for (const col of ['A', 'C', 'D', 'E', 'F', 'G', 'H', 'I']) {
+      ws.getCell(`${col}${rowNum}`).protection = { locked: false }
+    }
 
     // Prefill from recommendations if available (only within the initial trip length).
     // Truncate verbose entries, then size the row to the longest wrapped cell (col

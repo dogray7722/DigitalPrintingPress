@@ -67,6 +67,52 @@ Requires `ANTHROPIC_API_KEY` in `.env` (see `.env.example`).
 
 **Recommendation insert** (`src/lib/excel/sheets/recommendationInsert.ts`): `buildRecommendationInsert(ws, startRow, ts, regions, kind)` renders a region-grouped guide table BELOW the working tracker on each of HOTELS/RESTAURANTS/EXCURSIONS. The `kind` picks the array and attribute columns (hotels=Price+Stars, restaurants=Cuisine+Price, excursions=Duration+Price). The places loop **must** `row++` per place or ExcelJS throws "Cannot merge already merged cells."
 
+**Recommendations link.** The guide lands far below the tracker (row 28 on ACCOMMODATION, 58 on DINING, 38 on EXCURSIONS), so each tracker carries a "★ Recommendations →" chip to it. It's a **native internal hyperlink** (`cell.value = { text, hyperlink: "'SHEET'!A28" }`), *not* the `HYPERLINK()` formula form OVERVIEW's quick-nav strip still uses — see "Native Internal Hyperlinks" below. No formula means no cached `result:` obligation. (There is deliberately **no** "back to top" link — it was tried and removed.)
+
+- The link sits in the **last two cells of the row-2 description band**, merged — `F2:G2` / `G2:H2` / `I2:J2` — which is inside every tracker's frozen pane (`ySplit: 5`), so it stays on screen at any scroll depth.
+- **Row 2's merge stops two columns short** (`A2:E2` / `A2:F2` / `A2:H2`) to free that range. The ACCOMMODATION and DINING descriptions were **trimmed** to fit: at the band's `sectionHeader` size (13pt) a width unit holds only ~0.8 chars, and there is no wrap on this row (height 22). Caps are roughly **73 / 93 / 102** characters. Re-lengthening a description past its cap will clip it mid-word.
+- `reserveRecommendationsSlot(ws, ts, range)` is called **unconditionally**, right after `styleSectionHeader(ws.getRow(2), ts)`. It merges the range and paints the band fill — `styleSectionHeader` skips empty cells, so without it the band shows a white notch whenever recommendations are off.
+- `buildRecommendationsLink(ws, ts, ref, targetRow)` styles it as a **button chip** that deliberately contrasts with the band: dark `primary` fill against the band's mid-tone `secondary`, bold accent text at `sectionHeader` size with a matching thin frame on all four sides, centered, **no underline** (it read as a dated hyperlink squiggle; fill + frame + ★/→ already signal clickable). Must run **after** `styleSectionHeader` so the overrides win. The label `★   Recommendations   →` uses plain BMP characters, not emoji, so the star and arrow take the accent color; they stay in one string because a cell carries a single hyperlink across its whole value (rich-text runs would drop the link).
+- **The chip's accent color is measured, not fixed.** Tinting text and frame with the band's own `secondary` ties the chip to the band and is the intended look on **inkwell** (gold on charcoal, 6.68:1) — but that pairing is illegible on every other theme (1.60–2.84:1, below even the 3:1 large-text floor; `desert` is worst). `buildRecommendationsLink` calls `contrastRatio()` from `styleFactory.ts` and falls back to `primaryText` when `secondary` doesn't clear `AA_CONTRAST`, so inkwell gets the designed chip and everything else stays readable. `accent` was evaluated as a middle option and rejected — still fails on sakura/desert/parchment. The frame follows the same decision rather than staying gold unconditionally: a frame at 1.6:1 isn't a frame. **A theme added later is handled automatically** — and `verify-rec-jump-links.mjs` builds a workbook per theme and asserts the resulting pair clears 3:1, so a low-contrast `secondary` fails the suite instead of silently shipping unreadable text.
+- `verify-rec-jump-links.mjs` also asserts the chip's fill and text color **differ from `A2`'s** rather than checking hardcoded hex, so the chip-vs-band contrast holds for every theme.
+
+`buildRecommendationInsert` returns `number | null` — the section-band row, or `null` on either of its two no-op paths. **Callers must gate the link on that return value, not on `regions`**: the guide also no-ops when `regions` is non-empty but holds no places of that `kind`, and a link into a blank row is worse than no link. Verified by `scripts/verify-rec-jump-links.mjs`, including the negative case (no link, but the band fill survives).
+
+## Native Internal Hyperlinks
+
+`src/lib/excel/nativeHyperlinks.ts` (`injectNativeHyperlinks`, runs in `index.ts` after `injectChart`) rewrites ExcelJS's internal (same-workbook) hyperlinks into the shape Excel itself writes — **the only shape Google Sheets imports correctly.**
+
+There are two ways to make an internal link, and they are not equivalent:
+
+| | `HYPERLINK("#'SHEET'!A1", …)` formula | native `{ text, hyperlink: "'SHEET'!A1" }` |
+| --- | --- | --- |
+| Excel | navigates | navigates |
+| Google Sheets | **inert text** — Sheets doesn't resolve the fragment | navigates |
+| calcChain contract | needs a correct cached `result:` | n/a — not a formula |
+
+ExcelJS *does* detect an internal link (its `isInternalLink` regex matches `Sheet!A1` / `'Sheet Name'!A1`) and emits `location`, but it gets two things wrong:
+
+1. It **also** emits an `r:id` plus a matching `TargetMode="External"` relationship whose Target is the sheet reference. A hyperlink is either internal (`location`) or external (`r:id`), never both — Excel tries to resolve `'ACCOMMODATION'!A28` as a file.
+2. It never emits **`display`**. That one is why this matters for Sheets: without it, Google renders the link's text as a literal `#gid=xxxx` instead of the label (PHPOffice/PhpSpreadsheet#807 — same bug class, different library).
+
+```
+ExcelJS:  <hyperlink ref="F2" r:id="rId1" location="'ACCOMMODATION'!A28"/>
+          + <Relationship Id="rId1" Type=".../hyperlink" Target="'ACCOMMODATION'!A28" TargetMode="External"/>
+Excel:    <hyperlink ref="F2" location="'ACCOMMODATION'!A28" display="★   Recommendations   →"/>
+```
+
+The pass recovers `display` from the cell's own value (via `sharedStrings.xml`), so it is self-contained — every internal hyperlink in the workbook is fixed up with no registry threaded through the sheet builders.
+
+**Ordering: it must run AFTER `injectChart`.** Chart injection allocates its worksheet rel as `maxRelId(rels) + 1`; deleting hyperlink rels first would lower that max and let the new rel collide with the `<drawing r:id="rIdN"/>` reference ExcelJS already wrote into the sheet XML. Deleting afterwards is safe — rIds needn't be contiguous, and nothing is renumbered.
+
+**ExcelJS's reader can't see these links.** It binds a hyperlink to its cell only when the element carries an `r:id` (`worksheet-xform.js`: `if (hyperlink.rId)`), so an r:id-less native link is parsed but never surfaced on the cell — this affects genuine Excel-authored files too. Assert against the raw XML, not a `wb.xlsx.load()` round-trip (`verify-rec-jump-links.mjs` does exactly this). The label still round-trips as the cell's own string value, so a link-ignoring consumer shows the words, not a blank cell.
+
+**Confirmed working in Google Sheets** (manual Drive import, Aug 2026): the tracker links import as real internal links — Sheets resolves the target (`DINING!A58`) and renders the `display` label, not `#gid=xxxx`.
+
+**Google Sheets needs two clicks to follow ANY link, and the file cannot change that.** Clicking a linked cell opens a preview chip; following the link is a second click on the chip. This is universal Sheets behavior for every link in every spreadsheet — native or `HYPERLINK()` formula — not something `location`/`display` influences. The only mitigations are viewer-side and partial (Docs → Tools → Preferences → "Show Link Details" off shrinks the card but a small chip remains; publish-to-web gives single-click but doesn't apply to a downloaded file). Excel follows on one click. **Don't try to "fix" this in the workbook** — there is nothing to fix.
+
+OVERVIEW's quick-nav strip still uses the formula form and so remains Excel-only; converting it would need care around `chartInjection.ts` already rewriting that sheet's rels.
+
 ## Chart Injection
 
 ExcelJS has no `addChart` API. Charts are injected via `src/lib/excel/chartInjection.ts`, which post-processes the `writeBuffer()` output using JSZip: injects `xl/charts/chart1.xml`, `xl/drawings/drawing1.xml`, rels, and content-type overrides.
@@ -215,6 +261,8 @@ The generated `.xlsx` must open correctly in **both Excel and Google Sheets**. T
 - **No row hiding driven by cell/dropdown** — needs VBA (Excel) or Apps Script (Sheets); outline groups are OK (manual [+]/[−])
 - **No currency-symbol-from-dropdown** — `numFmt` strings are static; can't reference a cell value
 - **Cell/sheet protection is Excel-only** — every generated sheet except INSTRUCTIONS and ANNUAL EVENTS is locked via `protectWorkbook()` (`src/lib/excel/protection.ts`, called in `index.ts` right before `writeBuffer()`). Each sheet builder marks its own data-entry cells `protection: { locked: false }` and its formula/total cells `protection: { hidden: true }` at the point those cells are written. No password — this is a guardrail against accidentally overwriting a formula, not real security. Google Sheets ignores `sheetProtection`/`cell.protection` on upload, so every cell becomes editable again there; don't imply otherwise in copy or INSTRUCTIONS text
+- **A cell's `locked` flag is inert unless the sheet carries `<sheetProtection>`** — "unprotected sheet with one protected column" is not expressible in OOXML. To make a sheet feel open while guarding a single column, keep `sheetProtection` on, unlock every other cell, and switch off the sheet-level restrictions via `RELAXED_PROTECTION` in `protection.ts` (ExcelJS's defaults disallow formatting, insert/delete, sort and filter). **ITINERARY** is the one sheet set up this way: it's a writing surface, so every data cell in rows 4–33 is unlocked except the auto-Date column **B**, which stays locked + formula-hidden so typing a date can't sever that row's `TripStart` link. Column A's day number is deliberately editable there. Rows 1–3 stay locked as chrome
+- **Internal navigation links work in BOTH — but only in the native form.** A `HYPERLINK("#'SHEET'!A1", …)` formula navigates in Excel and is inert text in Google Sheets. A native `{ text, hyperlink: "'SHEET'!A1" }` link works in both, once `nativeHyperlinks.ts` has rewritten it into Excel's `location` + `display` shape (verified by Drive import). Prefer the native form for any new link. Note Sheets always needs a second click via its link-preview chip — a platform behavior the file can't control; see "Native Internal Hyperlinks" above
 - **The OVERVIEW B16 currency dropdown** is cosmetic/reference-only (a `type:'list'` data validation of 30 currencies); it does NOT drive `numFmt`. Options written to hidden helper column R (inline list would exceed Excel's 255-char limit). This is acceptable because it doesn't imply false interactivity.
 
 Before proposing any in-spreadsheet interactivity, verify it works statically in Google Sheets. If a control can't actually do what it implies, say so and offer honest alternatives.
@@ -234,6 +282,7 @@ src/
       workbookConfig.ts         # Named ranges, workbook defaults
       styleFactory.ts           # ThemeStyle, helpers: truncate(), wrappedLineCount(), rowHeightForLines()
       chartInjection.ts         # JSZip-based DrawingML chart injection
+      nativeHyperlinks.ts       # Rewrites internal links into Excel's location+display shape
       sheets/
         overview.ts             # OVERVIEW sheet + buildActualSpentFormula()
         itinerary.ts
@@ -267,6 +316,7 @@ scripts/
   verify-two-chart-injection.mjs
   verify-sheet-protection.mjs
   verify-quick-nav-icons.mjs
+  verify-rec-jump-links.mjs
 ```
 
 ## Row Height / Text Wrapping (ExcelJS)
@@ -294,6 +344,7 @@ node scripts/verify-image-chart-injection.mjs
 node scripts/verify-two-chart-injection.mjs  # budget chart + readiness doughnut share one drawing part
 node scripts/verify-sheet-protection.mjs
 node scripts/verify-quick-nav-icons.mjs      # OVERVIEW JUMP TO strip: per-sheet emoji survive the HYPERLINK formula round-trip
+node scripts/verify-rec-jump-links.mjs       # tracker row-2 "★ Recommendations →" button: native location+display XML, no r:id, no leftover hyperlink rels, chip styling contrasts the band, and band fill preserved when there's no guide
 ```
 
 ## Git Workflow
