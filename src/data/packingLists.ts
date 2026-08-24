@@ -85,6 +85,19 @@ const SPRING_AUTUMN_EXTRAS: PackingItem[] = [
   { category: 'Clothing', item: 'Comfortable trainers / sneakers' },
 ]
 
+// The sheet builder starts a new category header every time the category changes as it
+// walks this array, so a category may only appear in one contiguous run. Appending the
+// seasonal extras raw would emit a second CLOTHING / TOILETRIES / HEALTH block.
+function groupByCategory(items: PackingItem[]): PackingItem[] {
+  const byCategory = new Map<string, PackingItem[]>()
+  for (const item of items) {
+    const group = byCategory.get(item.category)
+    if (group) group.push(item)
+    else byCategory.set(item.category, [item])
+  }
+  return [...byCategory.values()].flat()
+}
+
 export function getPackingList(travelMonth: number): PackingItem[] {
   const season = getSeason(travelMonth)
   const extras =
@@ -94,5 +107,5 @@ export function getPackingList(travelMonth: number): PackingItem[] {
         ? WINTER_EXTRAS
         : SPRING_AUTUMN_EXTRAS
 
-  return [...ESSENTIALS, ...extras]
+  return groupByCategory([...ESSENTIALS, ...extras])
 }

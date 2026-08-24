@@ -23,6 +23,18 @@ interface Props {
 export function SheetToggleGrid({ sheets, useRecommendations, onChange }: Props) {
   return (
     <div>
+      {/* QUICK START — always on */}
+      <div className="flex items-center gap-3 p-3 rounded-lg bg-gray-50 border border-gray-200 mb-2">
+        <span className="text-xl">🚀</span>
+        <div className="flex-1">
+          <div className="text-sm font-medium text-gray-900">Quick Start</div>
+          <div className="text-xs text-gray-500">Numbered setup steps — always the first tab</div>
+        </div>
+        <div className="w-10 h-6 bg-indigo-500 rounded-full flex items-center justify-end px-1 cursor-not-allowed">
+          <div className="w-4 h-4 bg-white rounded-full shadow-sm" />
+        </div>
+      </div>
+
       {/* OVERVIEW — always on */}
       <div className="flex items-center gap-3 p-3 rounded-lg bg-gray-50 border border-gray-200 mb-2">
         <span className="text-xl">📊</span>

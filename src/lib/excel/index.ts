@@ -18,6 +18,7 @@ import { buildFlightsSheet } from './sheets/flights'
 import { buildTasksSheet } from './sheets/tasks'
 import { buildEventsSheet } from './sheets/events'
 import { buildInstructionsSheet } from './sheets/instructions'
+import { buildQuickStartSheet } from './sheets/quickStart'
 
 export async function generateWorkbook(
   state: WizardState,
@@ -29,7 +30,14 @@ export async function generateWorkbook(
 
   configureWorkbook(wb, state)
 
-  // OVERVIEW is always first and always included
+  // QUICK START is always the FIRST tab — the five things a buyer has to do before the
+  // rest of the file is theirs. Sheet order is add-order in ExcelJS, so this call has to
+  // stay above buildOverviewSheet. Nothing downstream depends on OVERVIEW being sheet1:
+  // chartInjection resolves its target by name via workbook.xml, and injectNativeHyperlinks
+  // walks every sheet part.
+  buildQuickStartSheet(wb, state, ts, recommendations)
+
+  // OVERVIEW is always included, and is the workbook's hub
   buildOverviewSheet(wb, state, ts, exchangeRate, recommendations)
 
   // Optional sheets in logical order, with recommendations prefill

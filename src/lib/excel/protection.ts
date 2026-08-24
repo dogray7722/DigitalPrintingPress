@@ -1,7 +1,7 @@
 import type ExcelJS from 'exceljs'
 
 // Sheets with no formulas/totals worth guarding — left fully editable.
-const UNPROTECTED_SHEETS = new Set(['INSTRUCTIONS', 'ANNUAL EVENTS'])
+const UNPROTECTED_SHEETS = new Set(['QUICK START', 'INSTRUCTIONS', 'ANNUAL EVENTS'])
 
 // ITINERARY is a writing surface, not a calculator, so it's deliberately near-open:
 // every data cell is unlocked except the auto-Date column B (itinerary.ts), which stays

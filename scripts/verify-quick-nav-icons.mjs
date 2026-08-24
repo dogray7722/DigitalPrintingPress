@@ -1,7 +1,10 @@
 // Verifies the OVERVIEW "JUMP TO" strip: every enabled sheet gets one internal-hyperlink
 // row prefixed with its SHEET_ICONS emoji, the old "→" arrow is gone, and the
-// astral-plane emoji survive the round trip into xl/worksheets/sheet1.xml as UTF-8 —
+// astral-plane emoji survive the round trip into OVERVIEW's sheet part as UTF-8 —
 // both as the cell's own text and inside the hyperlink's `display` attribute.
+//
+// OVERVIEW is NOT sheet1.xml (QUICK START is the first tab), so the part path is
+// resolved by name through workbook.xml + its rels rather than hardcoded.
 //
 // These are NATIVE internal hyperlinks, not HYPERLINK() formulas, so the targets are
 // asserted against the raw XML: ExcelJS's reader only binds a hyperlink to its cell when
@@ -107,7 +110,19 @@ for (let row = 38; row < 39 + EXPECTED.length; row++) {
 // Excel's own form is `location` + `display` with NO r:id. Without `display`, Google
 // Sheets renders the link text as a literal "#gid=xxxx" instead of the label.
 const zip = await JSZip.loadAsync(buffer)
-const overviewXml = await zip.file('xl/worksheets/sheet1.xml').async('string')
+
+// Resolve a sheet's part path by name: <sheet name="…" r:id="rIdN"/> in workbook.xml,
+// then that rId's Target in workbook.xml.rels. Tab order is not part path order.
+const wbXml = await zip.file('xl/workbook.xml').async('string')
+const wbRels = await zip.file('xl/_rels/workbook.xml.rels').async('string')
+function sheetPathFor(name) {
+  const rId = new RegExp(`<sheet[^>]*name="${name}"[^>]*r:id="(rId\\d+)"`).exec(wbXml)?.[1]
+  if (!rId) throw new Error(`sheet "${name}" not found in workbook.xml`)
+  const target = new RegExp(`Id="${rId}"[^>]*Target="([^"]+)"`).exec(wbRels)[1]
+  return 'xl/' + target.replace(/^\//, '').replace(/^xl\//, '')
+}
+const overviewPath = sheetPathFor('OVERVIEW')
+const overviewXml = await zip.file(overviewPath).async('string')
 const tags = [...overviewXml.matchAll(/<hyperlink\b[^>]*\/>/g)].map((m) => m[0])
 
 assert(
@@ -128,7 +143,11 @@ EXPECTED.forEach(([sheet, icon, label], i) => {
 
 // OVERVIEW is the sheet chartInjection rewrites, and the cover-photo drawing rel sits
 // AFTER the hyperlink rels. Deleting hyperlink rels must not orphan it.
-const rels = (await zip.file('xl/worksheets/_rels/sheet1.xml.rels')?.async('string')) ?? ''
+const overviewRelsPath = overviewPath.replace(
+  /worksheets\/(sheet\d+)\.xml$/,
+  'worksheets/_rels/$1.xml.rels'
+)
+const rels = (await zip.file(overviewRelsPath)?.async('string')) ?? ''
 assert(!/relationships\/hyperlink/.test(rels), 'no leftover hyperlink relationships on OVERVIEW')
 for (const rid of new Set([...overviewXml.matchAll(/r:id="(rId\d+)"/g)].map((m) => m[1]))) {
   assert(rels.includes(`Id="${rid}"`), `OVERVIEW r:id ${rid} still resolves (drawing intact)`)

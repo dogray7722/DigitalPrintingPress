@@ -23,3 +23,4 @@ npm-debug.log*
 .DS_Store
 Thumbs.db
 .recommendations-cache.json
+.recommendations-cache.json.*

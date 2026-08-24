@@ -129,9 +129,12 @@ export function Step4Preview() {
 
           <div className="px-4 py-3">
             <div className="text-xs text-gray-400 font-medium mb-2">
-              SHEETS INCLUDED ({enabledSheets.length + 2} tabs — OVERVIEW + INSTRUCTIONS always on)
+              SHEETS INCLUDED ({enabledSheets.length + 3} tabs — QUICK START + OVERVIEW + INSTRUCTIONS always on)
             </div>
             <div className="flex flex-wrap gap-1.5">
+              <span className="inline-flex items-center gap-1 text-xs bg-indigo-50 text-indigo-700 font-medium px-2 py-0.5 rounded-full border border-indigo-200">
+                🚀 Quick Start
+              </span>
               <span className="inline-flex items-center gap-1 text-xs bg-indigo-50 text-indigo-700 font-medium px-2 py-0.5 rounded-full border border-indigo-200">
                 📊 Overview
               </span>

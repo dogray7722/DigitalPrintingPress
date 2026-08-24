@@ -126,39 +126,75 @@ interface CacheEntry {
   expiresAt: number;
 }
 const responseCache = new Map<string, CacheEntry>();
-const CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
+// Recommendations are a list of real hotels/restaurants/excursions — that doesn't rot
+// on a 30-day timescale, and every miss buys a Sonnet call plus 5 web searches.
+const CACHE_TTL_MS = 183 * 24 * 60 * 60 * 1000; // ~6 months
 
 const CACHE_FILE_PATH = path.resolve(
   process.cwd(),
   ".recommendations-cache.json"
 );
 
-function loadCacheFromDisk(): void {
+// ---------------------------------------------------------------------------
+// Shared disk-cache plumbing (used by both the response and exchange-rate caches)
+// ---------------------------------------------------------------------------
+
+function readCacheFile<T>(filePath: string): Map<string, T> {
   try {
-    const raw = fs.readFileSync(CACHE_FILE_PATH, "utf8");
-    const entries = JSON.parse(raw) as Array<[string, CacheEntry]>;
-    const now = Date.now();
-    for (const [key, entry] of entries) {
-      if (entry.expiresAt > now) responseCache.set(key, entry);
-    }
-    console.log(
-      `[recommendations] loaded ${responseCache.size} cached destination(s) from disk`
-    );
+    const raw = fs.readFileSync(filePath, "utf8");
+    return new Map(JSON.parse(raw) as Array<[string, T]>);
   } catch {
-    // File doesn't exist yet or is corrupt — start with empty cache
+    // File doesn't exist yet or is corrupt — start empty.
+    return new Map();
   }
 }
 
-function saveCacheToDisk(): void {
+// Merge-on-write. Each process loads the file once at import and would otherwise
+// overwrite it wholesale from its own snapshot, so anything a *different* process
+// (a second dev server, an overlapping restart) wrote in the meantime was silently
+// erased. Re-read first, merge, then write — and adopt the merged view so this
+// process picks up the other one's entries too.
+function persistCache<T extends { expiresAt: number }>(
+  filePath: string,
+  memory: Map<string, T>
+): void {
   try {
-    fs.writeFileSync(
-      CACHE_FILE_PATH,
-      JSON.stringify([...responseCache.entries()]),
-      "utf8"
-    );
+    const merged = readCacheFile<T>(filePath);
+    for (const [key, entry] of memory) {
+      const existing = merged.get(key);
+      // Same key on both sides: keep whichever copy was fetched most recently.
+      if (!existing || entry.expiresAt >= existing.expiresAt)
+        merged.set(key, entry);
+    }
+    for (const [key, entry] of merged) memory.set(key, entry);
+
+    // Write-then-rename so a crash mid-write can't leave a truncated file behind.
+    const tmpPath = `${filePath}.${process.pid}.tmp`;
+    fs.writeFileSync(tmpPath, JSON.stringify([...merged]), "utf8");
+    fs.renameSync(tmpPath, filePath);
   } catch {
-    // Non-fatal — cache will still work in-memory this session
+    // Non-fatal — cache will still work in-memory this session.
   }
+}
+
+// Expired entries are deliberately kept, both here and on disk: past its TTL an entry
+// stops being served directly, but it stays available as a fallback if the refresh
+// call fails. Dropping them meant destroying still-usable data and re-paying for it.
+function loadCacheFromDisk(): void {
+  for (const [key, entry] of readCacheFile<CacheEntry>(CACHE_FILE_PATH)) {
+    responseCache.set(key, entry);
+  }
+  const now = Date.now();
+  const fresh = [...responseCache.values()].filter(
+    (e) => e.expiresAt > now
+  ).length;
+  console.log(
+    `[recommendations] loaded ${responseCache.size} cached destination(s) from disk (${fresh} fresh, ${responseCache.size - fresh} stale)`
+  );
+}
+
+function saveCacheToDisk(): void {
+  persistCache(CACHE_FILE_PATH, responseCache);
 }
 
 loadCacheFromDisk();
@@ -178,37 +214,31 @@ interface ExchangeRateCacheEntry {
   expiresAt: number;
 }
 const exchangeRateCache = new Map<string, ExchangeRateCacheEntry>();
+// Rates get their own TTL — deliberately left at 30 days, not raised alongside the
+// recommendations cache above.
+const EXCHANGE_RATE_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 const EXCHANGE_RATE_CACHE_FILE = path.resolve(
   process.cwd(),
   ".exchange-rate-cache.json"
 );
 
 function loadExchangeRateCache(): void {
-  try {
-    const raw = fs.readFileSync(EXCHANGE_RATE_CACHE_FILE, "utf8");
-    const entries = JSON.parse(raw) as Array<[string, ExchangeRateCacheEntry]>;
-    const now = Date.now();
-    for (const [key, entry] of entries) {
-      if (entry.expiresAt > now) exchangeRateCache.set(key, entry);
-    }
-    console.log(
-      `[exchange-rate] loaded ${exchangeRateCache.size} cached pair(s) from disk`
-    );
-  } catch {
-    // File doesn't exist yet or is corrupt — start with empty cache
+  for (const [key, entry] of readCacheFile<ExchangeRateCacheEntry>(
+    EXCHANGE_RATE_CACHE_FILE
+  )) {
+    exchangeRateCache.set(key, entry);
   }
+  const now = Date.now();
+  const fresh = [...exchangeRateCache.values()].filter(
+    (e) => e.expiresAt > now
+  ).length;
+  console.log(
+    `[exchange-rate] loaded ${exchangeRateCache.size} cached pair(s) from disk (${fresh} fresh, ${exchangeRateCache.size - fresh} stale)`
+  );
 }
 
 function saveExchangeRateCache(): void {
-  try {
-    fs.writeFileSync(
-      EXCHANGE_RATE_CACHE_FILE,
-      JSON.stringify([...exchangeRateCache.entries()]),
-      "utf8"
-    );
-  } catch {
-    // Non-fatal
-  }
+  persistCache(EXCHANGE_RATE_CACHE_FILE, exchangeRateCache);
 }
 
 loadExchangeRateCache();
@@ -245,7 +275,31 @@ async function generateExchangeRate(
     console.log(`[exchange-rate] cache hit for ${cacheKey}`);
     return cached.data;
   }
+  if (cached) {
+    console.log(`[exchange-rate] ${cacheKey} is past its TTL — refreshing`);
+  }
 
+  try {
+    return await fetchExchangeRateFromApi(from, to, cacheKey);
+  } catch (err) {
+    // Stale beats nothing: the widget renders the rate with its own `fetchedAt`
+    // date, so an old value is visibly old rather than silently wrong.
+    if (cached) {
+      console.warn(
+        `[exchange-rate] refresh for ${cacheKey} failed — serving stale rate from ${cached.data.fetchedAt}:`,
+        err instanceof Error ? err.message : err
+      );
+      return cached.data;
+    }
+    throw err;
+  }
+}
+
+async function fetchExchangeRateFromApi(
+  from: string,
+  to: string,
+  cacheKey: string
+): Promise<ExchangeRateEntry> {
   const message = await getClient().messages.create({
     model: "claude-haiku-4-5-20251001",
     max_tokens: 256,
@@ -291,15 +345,27 @@ async function generateExchangeRate(
   };
   exchangeRateCache.set(cacheKey, {
     data: result,
-    expiresAt: Date.now() + CACHE_TTL_MS
+    expiresAt: Date.now() + EXCHANGE_RATE_TTL_MS
   });
   saveExchangeRateCache();
 
   return result;
 }
 
+// Case, accents, punctuation and internal whitespace are folded away so "Paris, France",
+// "paris france" and "Paris  France" share one entry instead of buying three API calls.
+// Deliberately NOT fuzzy beyond that — "Paris" and "Paris, France" stay distinct, because
+// anything looser starts conflating real places (Georgia the country vs. the state).
+// Falls back to the raw lowercased string when normalization strips everything (a
+// destination typed in a non-Latin script), so those can't all collide on "".
 function getCacheKey(input: RecommendationInput): string {
-  return input.destination.trim().toLowerCase();
+  const normalized = input.destination
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+  return normalized || input.destination.trim().toLowerCase();
 }
 
 // ---------------------------------------------------------------------------
@@ -377,7 +443,32 @@ async function generateRecommendations(input: RecommendationInput) {
     console.log("[recommendations] response cache hit for:", input.destination);
     return cached.data;
   }
+  if (cached) {
+    console.log(
+      `[recommendations] cached entry for "${input.destination}" is past its 6-month TTL — refreshing`
+    );
+  }
 
+  try {
+    return await fetchRecommendationsFromApi(input, cacheKey);
+  } catch (err) {
+    // A stale guide is far better than a failed generation — the workbook still
+    // gets real hotels/restaurants, and we don't burn a second call retrying.
+    if (cached) {
+      console.warn(
+        `[recommendations] refresh for "${input.destination}" failed — serving stale cached data:`,
+        err instanceof Error ? err.message : err
+      );
+      return cached.data;
+    }
+    throw err;
+  }
+}
+
+async function fetchRecommendationsFromApi(
+  input: RecommendationInput,
+  cacheKey: string
+) {
   const message = await getClient().messages.create({
     model: "claude-sonnet-4-6",
     max_tokens: 16000,

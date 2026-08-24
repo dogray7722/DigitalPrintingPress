@@ -209,7 +209,11 @@ function assertUnprotected(sheetXml, sheetName) {
   assertHidden(xml, 'TASKS', 'A2')
 }
 
-// ── INSTRUCTIONS — never protected ───────────────────────────────────────────
+// ── QUICK START / INSTRUCTIONS — never protected ─────────────────────────────
+{
+  const xml = await loadSheetXml('QUICK START')
+  assertUnprotected(xml, 'QUICK START')
+}
 {
   const xml = await loadSheetXml('INSTRUCTIONS')
   assertUnprotected(xml, 'INSTRUCTIONS')

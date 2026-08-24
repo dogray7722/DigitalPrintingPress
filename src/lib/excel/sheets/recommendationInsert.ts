@@ -56,6 +56,20 @@ const CONFIG: Record<InsertKind, KindConfig> = {
 }
 
 /**
+ * True when `regions` holds at least one place of `kind` — i.e. when
+ * `buildRecommendationInsert` would actually render a guide (and its tracker would
+ * therefore carry a "★ Recommendations →" chip). Exported so QUICK START can describe
+ * only the guides that exist, using the same predicate the builder gates on rather
+ * than a second, drifting copy of it.
+ */
+export function hasRecommendationsFor(
+  regions: RegionRec[] | undefined,
+  kind: InsertKind
+): boolean {
+  return !!regions?.some((r) => CONFIG[kind].pick(r).length > 0)
+}
+
+/**
  * Renders an informational, AI-generated guide table below the working tracker on a
  * tab. Places are grouped under a region/city banner (e.g. "Cayo District"). This is
  * reference content only — it never feeds budget formulas and the user keeps logging
@@ -75,14 +89,14 @@ export function buildRecommendationInsert(
   regions: RegionRec[] | undefined,
   kind: InsertKind
 ): number | null {
-  if (!regions?.length) return null
+  if (!regions?.length || !hasRecommendationsFor(regions, kind)) return null
   const cfg = CONFIG[kind]
 
-  // Keep only regions that actually have at least one place of this kind.
+  // Keep only regions that actually have at least one place of this kind. The guard
+  // above already proved at least one survives.
   const relevant = regions
     .map((r) => ({ region: r.region, description: r.description, places: cfg.pick(r) }))
     .filter((r) => r.places.length > 0)
-  if (!relevant.length) return null
 
   // Merged-cell widths (in chars) so we can size row heights — Excel won't auto-grow
   // merged rows. Widths were already set by the caller, so read them back.

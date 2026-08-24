@@ -40,17 +40,18 @@ All sheet builders are in `src/lib/excel/sheets/`. The entry point is `src/lib/e
 
 | #   | Sheet          | Always on | Notes                                                                                                                                            |
 | --- | -------------- | --------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
-| 1   | OVERVIEW       | ✓         | Named ranges: TripStart B6, TripEnd D6, NumAdults E9, TotalBudget D16; rows 1–14 are a dashboard "hero band" (dark B:E text panel + G1:L11 cover photo, no gridlines/freeze — see below) instead of a title bar + label/value ledger; native DrawingML chart(s) injected via JSZip post-processing; trip-readiness doughnut ring (B25:E34) with a centered `T1/T3` "% ready" label floated over its transparent hole, quick-nav internal-hyperlink strip (B38+, each link prefixed with its `SHEET_ICONS` emoji — the same map the Step 3 toggle grid uses, exported from `src/types/wizard.ts`), neighborhood guide from AI regions (G38+, when recs enabled). Exactly one image (the cover photo) — a second upload + multi-image strip was tried and removed: it served no purpose and arbitrary source dimensions made the results unpredictable |
-| 2   | ITINERARY      | ✓         | Auto-dates from TripStart+n; AI-prefilled when recs on                                                                                           |
-| 3   | TRANSPORT      | toggle    | SheetId = `flights`; Mode dropdown: Air/Train/Bus/Car/Ferry/Taxi/Other                                                                           |
-| 4   | HOTELS         | toggle    | Date col auto-fills from TripStart; AI recommendation guide table appended below tracker                                                         |
-| 5   | RESTAURANTS    | toggle    | AI recommendation guide table appended below tracker                                                                                             |
-| 6   | EXCURSIONS     | toggle    | Per-person × NumAdults; AI recommendation guide table appended below tracker                                                                     |
-| 7   | BUDGET TRACKER | toggle    | Date / Category dropdown / Description / Amount / Running Total / Notes                                                                          |
-| 8   | PACKING LIST   | toggle    | Seasonal packing + COUNTIF progress formula; `Packed?` (C5:C500) is a one-option `"✓"` dropdown (see below)                                       |
-| 9   | TASKS          | toggle    | `Done?` (D5:D500) is a one-option `"✓"` dropdown (see below); Priority dropdown on E5:E500                                                        |
-| 10  | ANNUAL EVENTS  | AI-gated  | Only generated when `useRecommendations` is on AND data returned                                                                                 |
-| 11  | INSTRUCTIONS   | ✓         | Always last; not toggleable                                                                                                                      |
+| 1   | QUICK START    | ✓         | Always **first**; not toggleable. The short onboarding page — numbered steps for dates (OVERVIEW B6/D6), estimated budget (H15:H20), the ITINERARY draft, the tracker "★ Recommendations →" chips, and logging spend. Steps are conditional and auto-numbered by `stepHeader()`, so copy must never name a step by number. Left unprotected (no formulas). No gridlines. `hasRecommendationsFor()` from `recommendationInsert.ts` gates the recommendations step, so it can only describe guides that actually exist |
+| 2   | OVERVIEW       | ✓         | Named ranges: TripStart B6, TripEnd D6, NumAdults E9, TotalBudget D16; rows 1–14 are a dashboard "hero band" (dark B:E text panel + G1:L11 cover photo, no gridlines/freeze — see below) instead of a title bar + label/value ledger; native DrawingML chart(s) injected via JSZip post-processing; trip-readiness doughnut ring (B25:E34) with a centered `T1/T3` "% ready" label floated over its transparent hole, quick-nav internal-hyperlink strip (B38+, each link prefixed with its `SHEET_ICONS` emoji — the same map the Step 3 toggle grid uses, exported from `src/types/wizard.ts`), neighborhood guide from AI regions (G38+, when recs enabled). Exactly one image (the cover photo) — a second upload + multi-image strip was tried and removed: it served no purpose and arbitrary source dimensions made the results unpredictable |
+| 3   | ITINERARY      | ✓         | Auto-dates from TripStart+n; AI-prefilled when recs on                                                                                           |
+| 4   | TRANSPORT      | toggle    | SheetId = `flights`; Mode dropdown: Air/Train/Bus/Car/Ferry/Taxi/Other                                                                           |
+| 5   | HOTELS         | toggle    | Date col auto-fills from TripStart; AI recommendation guide table appended below tracker                                                         |
+| 6   | RESTAURANTS    | toggle    | AI recommendation guide table appended below tracker                                                                                             |
+| 7   | EXCURSIONS     | toggle    | Per-person × NumAdults; AI recommendation guide table appended below tracker                                                                     |
+| 8   | BUDGET TRACKER | toggle    | Date / Category dropdown / Description / Amount / Running Total / Notes                                                                          |
+| 9   | PACKING LIST   | toggle    | Seasonal packing + COUNTIF progress formula; `Packed?` (C5:C500) is a one-option `"✓"` dropdown (see below)                                       |
+| 10  | TASKS          | toggle    | `Done?` (D5:D500) is a one-option `"✓"` dropdown (see below); Priority dropdown on E5:E500                                                        |
+| 11  | ANNUAL EVENTS  | AI-gated  | Only generated when `useRecommendations` is on AND data returned                                                                                 |
+| 12  | INSTRUCTIONS   | ✓         | Always last; not toggleable                                                                                                                      |
 
 ### Check-mark dropdowns (PACKING LIST / TASKS)
 
@@ -129,9 +130,11 @@ The pass recovers `display` from the cell's own value (via `sharedStrings.xml`),
 
 **Google Sheets needs two clicks to follow ANY link, and the file cannot change that.** Clicking a linked cell opens a preview chip; following the link is a second click on the chip. This is universal Sheets behavior for every link in every spreadsheet — native or `HYPERLINK()` formula — not something `location`/`display` influences. The only mitigations are viewer-side and partial (Docs → Tools → Preferences → "Show Link Details" off shrinks the card but a small chip remains; publish-to-web gives single-click but doesn't apply to a downloaded file). Excel follows on one click. **Don't try to "fix" this in the workbook** — there is nothing to fix.
 
-**Every internal link in the workbook now uses this form** — the three tracker chips and OVERVIEW's 8-row quick-nav strip. No `HYPERLINK()` formula links remain; don't reintroduce one.
+**Every internal link in the workbook now uses this form** — the three tracker chips, OVERVIEW's 8-row quick-nav strip, and QUICK START's "where to go next" rows. No `HYPERLINK()` formula links remain; don't reintroduce one.
 
 **OVERVIEW is the delicate case, and it works because nothing is renumbered.** ExcelJS assigns rIds to hyperlinks *before* drawings (`worksheet-xform.js`), so the cover-photo drawing lands on `rId9` behind the 8 quick-nav rels, and `chartInjection` then merges its charts into that existing drawing part. Deleting the hyperlink rels afterwards leaves `<drawing r:id="rId9"/>` resolving fine — rIds needn't be contiguous. `verify-quick-nav-icons.mjs` asserts exactly that (`OVERVIEW r:id rId9 still resolves`), so a future change that renumbers instead of deleting fails the suite rather than shipping a repair prompt.
+
+**OVERVIEW is not `sheet1.xml`** — QUICK START is the first tab, so OVERVIEW's part is `sheet2.xml`. Nothing in the pipeline cares (`chartInjection` resolves its target by name through `workbook.xml` + its rels, and `injectNativeHyperlinks` walks every sheet part), but a verify script that hardcodes a part path will silently assert against the wrong sheet. Resolve by name — `verify-sheet-protection.mjs`, `verify-quick-nav-icons.mjs` and `verify-quick-start.mjs` all carry the same `sheetPathFor(name)` helper.
 
 ## Chart Injection
 
@@ -315,6 +318,7 @@ src/
         tasks.ts
         events.ts               # ANNUAL EVENTS (AI-gated)
         instructions.ts
+        quickStart.ts           # QUICK START (always the first tab)
         recommendationInsert.ts # AI guide table injected below trackers
     recommendations/
       client.ts                 # Browser-side fetch to /api/recommendations
@@ -338,6 +342,7 @@ scripts/
   verify-quick-nav-icons.mjs
   verify-rec-jump-links.mjs
   verify-check-dropdowns.mjs
+  verify-quick-start.mjs
 ```
 
 ## Row Height / Text Wrapping (ExcelJS)
@@ -366,6 +371,7 @@ node scripts/verify-two-chart-injection.mjs  # budget chart + readiness doughnut
 node scripts/verify-sheet-protection.mjs
 node scripts/verify-quick-nav-icons.mjs      # OVERVIEW JUMP TO strip: per-sheet emoji survive into the hyperlink `display` attr; no r:id; cover-photo drawing rel intact
 node scripts/verify-check-dropdowns.mjs      # PACKING LIST C / TASKS D one-option "✓" dropdown matches the COUNTIF literal, in-model and in raw XML
+node scripts/verify-quick-start.mjs          # QUICK START is tab 1, its jump links are native location+display, its step numbering has no gaps, and it only advertises recommendation guides that exist
 node scripts/verify-rec-jump-links.mjs       # tracker row-2 "★ Recommendations →" button: native location+display XML, no r:id, no leftover hyperlink rels, chip styling contrasts the band, and band fill preserved when there's no guide
 ```
 
